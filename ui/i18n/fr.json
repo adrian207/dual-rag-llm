@@ -1,0 +1,61 @@
+{
+  "app_title": "Système RAG Dual LLM",
+  "app_subtitle": "Assistant IA Intelligent avec Outils Web",
+  "welcome_title": "Bienvenue !",
+  "welcome_message": "Posez-moi des questions sur la programmation, le développement ou des sujets techniques.",
+  "features": {
+    "docs": "Recherche de Documentation",
+    "web": "Recherche Web",
+    "github": "Intégration GitHub",
+    "cache": "Cache Intelligent"
+  },
+  "tools": {
+    "web_search": "Recherche Web",
+    "github": "GitHub",
+    "compare_models": "Comparer les Modèles"
+  },
+  "model_selector": {
+    "auto": "Auto (Routage Intelligent)",
+    "microsoft": "Technologies Microsoft",
+    "opensource": "Open Source",
+    "general": "Usage Général"
+  },
+  "input": {
+    "placeholder": "Posez une question... (ex., 'Comment impl ementer le cache Redis en Python?')",
+    "send": "Envoyer",
+    "github_repo_placeholder": "Optionnel: utilisateur/repo (ex., 'fastapi/fastapi')"
+  },
+  "examples": {
+    "title": "Exemples Rapides",
+    "python_async": "Fonction async Python",
+    "csharp_features": "Fonctionnalités C# 12",
+    "fastapi_middleware": "Middleware FastAPI",
+    "powershell_errors": "Erreurs PowerShell"
+  },
+  "sidebar": {
+    "system_info": "Info Système",
+    "total_queries": "Requêtes Totales:",
+    "cache_hits": "Réussites Cache:",
+    "web_searches": "Recherches Web:",
+    "github_queries": "Requêtes GitHub:",
+    "theme": "Thème",
+    "language": "Langue",
+    "actions": "Actions",
+    "clear_cache": "Vider le Cache",
+    "refresh_stats": "Actualiser les Stats"
+  },
+  "status": {
+    "cache_hit_rate": "Taux de Réussite:",
+    "status": "Statut:",
+    "connecting": "Connexion...",
+    "online": "En ligne",
+    "offline": "Hors ligne"
+  },
+  "messages": {
+    "you": "Vous",
+    "assistant": "Assistant",
+    "cached": "En cache",
+    "error": "Erreur"
+  }
+}
+

@@ -1,0 +1,61 @@
+{
+  "app_title": "Dual RAG LLM System",
+  "app_subtitle": "Intelligent AI Assistant with Web Tools",
+  "welcome_title": "Welcome!",
+  "welcome_message": "Ask me anything about coding, development, or technical topics.",
+  "features": {
+    "docs": "Documentation Search",
+    "web": "Web Search",
+    "github": "GitHub Integration",
+    "cache": "Smart Caching"
+  },
+  "tools": {
+    "web_search": "Web Search",
+    "github": "GitHub",
+    "compare_models": "Compare Models"
+  },
+  "model_selector": {
+    "auto": "Auto (Smart Routing)",
+    "microsoft": "Microsoft Technologies",
+    "opensource": "Open Source",
+    "general": "General Purpose"
+  },
+  "input": {
+    "placeholder": "Ask a question... (e.g., 'How do I implement Redis caching in Python?')",
+    "send": "Send",
+    "github_repo_placeholder": "Optional: user/repo (e.g., 'fastapi/fastapi')"
+  },
+  "examples": {
+    "title": "Quick Examples",
+    "python_async": "Python async function",
+    "csharp_features": "C# 12 features",
+    "fastapi_middleware": "FastAPI middleware",
+    "powershell_errors": "PowerShell errors"
+  },
+  "sidebar": {
+    "system_info": "System Info",
+    "total_queries": "Total Queries:",
+    "cache_hits": "Cache Hits:",
+    "web_searches": "Web Searches:",
+    "github_queries": "GitHub Queries:",
+    "theme": "Theme",
+    "language": "Language",
+    "actions": "Actions",
+    "clear_cache": "Clear Cache",
+    "refresh_stats": "Refresh Stats"
+  },
+  "status": {
+    "cache_hit_rate": "Cache Hit Rate:",
+    "status": "Status:",
+    "connecting": "Connecting...",
+    "online": "Online",
+    "offline": "Offline"
+  },
+  "messages": {
+    "you": "You",
+    "assistant": "Assistant",
+    "cached": "Cached",
+    "error": "Error"
+  }
+}
+

@@ -1,0 +1,61 @@
+{
+  "app_title": "デュアルRAG LLMシステム",
+  "app_subtitle": "Webツールを備えたインテリジェントAIアシスタント",
+  "welcome_title": "ようこそ！",
+  "welcome_message": "コーディング、開発、技術的なトピックについて何でも聞いてください。",
+  "features": {
+    "docs": "ドキュメント検索",
+    "web": "Web検索",
+    "github": "GitHub統合",
+    "cache": "スマートキャッシュ"
+  },
+  "tools": {
+    "web_search": "Web検索",
+    "github": "GitHub",
+    "compare_models": "モデル比較"
+  },
+  "model_selector": {
+    "auto": "自動（スマートルーティング）",
+    "microsoft": "Microsoftテクノロジー",
+    "opensource": "オープンソース",
+    "general": "汎用"
+  },
+  "input": {
+    "placeholder": "質問してください...（例：「PythonでRedisキャッシュを実装するには？」）",
+    "send": "送信",
+    "github_repo_placeholder": "オプション：user/repo（例：'fastapi/fastapi'）"
+  },
+  "examples": {
+    "title": "クイック例",
+    "python_async": "Python async関数",
+    "csharp_features": "C# 12の機能",
+    "fastapi_middleware": "FastAPIミドルウェア",
+    "powershell_errors": "PowerShellエラー"
+  },
+  "sidebar": {
+    "system_info": "システム情報",
+    "total_queries": "合計クエリ：",
+    "cache_hits": "キャッシュヒット：",
+    "web_searches": "Web検索：",
+    "github_queries": "GitHubクエリ：",
+    "theme": "テーマ",
+    "language": "言語",
+    "actions": "アクション",
+    "clear_cache": "キャッシュクリア",
+    "refresh_stats": "統計更新"
+  },
+  "status": {
+    "cache_hit_rate": "キャッシュヒット率：",
+    "status": "ステータス：",
+    "connecting": "接続中...",
+    "online": "オンライン",
+    "offline": "オフライン"
+  },
+  "messages": {
+    "you": "あなた",
+    "assistant": "アシスタント",
+    "cached": "キャッシュ済み",
+    "error": "エラー"
+  }
+}
+
