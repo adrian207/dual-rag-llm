@@ -1,0 +1,149 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dual-rag-llm.fullname" . }}
+  labels:
+    {{- include "dual-rag-llm.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "dual-rag-llm.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "dual-rag-llm.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "dual-rag-llm.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if .Values.initContainers }}
+      initContainers:
+        {{- toYaml .Values.initContainers | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          env:
+            - name: OLLAMA_URL
+              value: {{ .Values.env.OLLAMA_URL | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.env.LOG_LEVEL | quote }}
+            - name: ENVIRONMENT
+              value: {{ .Values.env.ENVIRONMENT | quote }}
+            {{- if .Values.redis.enabled }}
+            - name: REDIS_HOST
+              value: "{{ include "dual-rag-llm.fullname" . }}-redis-master"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "dual-rag-llm.fullname" . }}-redis
+                  key: redis-password
+            {{- end }}
+            {{- if .Values.secrets }}
+            - name: ENCRYPTION_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "dual-rag-llm.fullname" . }}-secrets
+                  key: encryption-master-key
+                  optional: true
+            - name: BRAVE_SEARCH_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "dual-rag-llm.fullname" . }}-secrets
+                  key: brave-search-api-key
+                  optional: true
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "dual-rag-llm.fullname" . }}-secrets
+                  key: github-token
+                  optional: true
+            {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "dual-rag-llm.fullname" . }}-config
+          {{- if .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml .Values.startupProbe | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+          {{- end }}
+        {{- if .Values.ollama.enabled }}
+        - name: ollama
+          image: "{{ .Values.ollama.image.repository }}:{{ .Values.ollama.image.tag }}"
+          imagePullPolicy: {{ .Values.ollama.image.pullPolicy }}
+          ports:
+            - name: ollama
+              containerPort: 11434
+              protocol: TCP
+          env:
+            - name: OLLAMA_HOST
+              value: "0.0.0.0:11434"
+          resources:
+            {{- toYaml .Values.ollama.resources | nindent 12 }}
+          {{- if .Values.ollama.persistence.enabled }}
+          volumeMounts:
+            - name: ollama-data
+              mountPath: /root/.ollama
+          {{- end }}
+        {{- end }}
+      {{- if or .Values.persistence.enabled .Values.ollama.persistence.enabled }}
+      volumes:
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "dual-rag-llm.fullname" . }}-data
+        {{- end }}
+        {{- if .Values.ollama.persistence.enabled }}
+        - name: ollama-data
+          persistentVolumeClaim:
+            claimName: {{ include "dual-rag-llm.fullname" . }}-ollama
+        {{- end }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+

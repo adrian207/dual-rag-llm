@@ -1,0 +1,32 @@
+apiVersion: v2
+name: dual-rag-llm
+description: A Helm chart for Dual RAG LLM System - Enterprise RAG with Multi-language Support
+type: application
+version: 1.19.0
+appVersion: "1.19.0"
+
+keywords:
+  - rag
+  - llm
+  - ai
+  - machine-learning
+  - ollama
+  - chromadb
+  - fastapi
+
+maintainers:
+  - name: Adrian Johnson
+    email: adrian207@gmail.com
+
+home: https://github.com/adrian207/dual-rag-llm
+sources:
+  - https://github.com/adrian207/dual-rag-llm
+
+icon: https://raw.githubusercontent.com/adrian207/dual-rag-llm/main/docs/logo.png
+
+dependencies:
+  - name: redis
+    version: "17.11.3"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
+
