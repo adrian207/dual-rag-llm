@@ -134,7 +134,7 @@ Future development plans and enhancement ideas for the dual RAG system.
 
 ### Security & Compliance
 - [ ] RBAC (Role-Based Access Control)
-- [ ] Audit logging
+- [x] Audit logging ✅ **(v1.14.0 - Completed)**
 - [ ] Data encryption at rest and in transit
 - [ ] GDPR compliance features
 - [ ] SOC 2 compliance
