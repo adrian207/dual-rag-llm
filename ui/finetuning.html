@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Fine-tuning - Dual RAG LLM</title>
+    <link rel="stylesheet" href="/ui/styles.css">
+    <link rel="stylesheet" href="/ui/finetuning.css">
+</head>
+<body>
+    <div class="container finetuning-layout">
+        <header>
+            <h1>🔧 Model Fine-tuning Pipeline</h1>
+            <nav>
+                <a href="/ui">← Back to Chat</a>
+                <a href="/ui/ab-testing.html">🧪 A/B Testing</a>
+                <button id="refreshAll" class="btn-primary">🔄 Refresh</button>
+            </nav>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="datasets">📁 Datasets</button>
+            <button class="tab-btn" data-tab="jobs">⚙️ Training Jobs</button>
+            <button class="tab-btn" data-tab="models">🤖 Model Registry</button>
+            <button class="tab-btn" data-tab="create">➕ Create New</button>
+        </div>
+
+        <div class="content">
+            <!-- Datasets Tab -->
+            <div id="datasets-tab" class="tab-content active">
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>📁 Training Datasets</h2>
+                        <button onclick="showCreateDataset()" class="btn-primary">+ Upload Dataset</button>
+                    </div>
+                    <div id="datasetsList"></div>
+                </div>
+            </div>
+
+            <!-- Training Jobs Tab -->
+            <div id="jobs-tab" class="tab-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>⚙️ Fine-tuning Jobs</h2>
+                        <button onclick="showCreateJob()" class="btn-primary">+ Create Job</button>
+                    </div>
+                    <div class="jobs-filter">
+                        <button class="filter-btn active" data-filter="all">All</button>
+                        <button class="filter-btn" data-filter="training">Training</button>
+                        <button class="filter-btn" data-filter="completed">Completed</button>
+                        <button class="filter-btn" data-filter="failed">Failed</button>
+                    </div>
+                    <div id="jobsList"></div>
+                </div>
+            </div>
+
+            <!-- Model Registry Tab -->
+            <div id="models-tab" class="tab-content">
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>🤖 Fine-tuned Models</h2>
+                    </div>
+                    <div id="modelsList"></div>
+                </div>
+            </div>
+
+            <!-- Create New Tab -->
+            <div id="create-tab" class="tab-content">
+                <div class="create-grid">
+                    <!-- Upload Dataset -->
+                    <div class="panel">
+                        <h2>📁 Upload Training Dataset</h2>
+                        <form id="uploadDatasetForm" class="upload-form">
+                            <div class="form-group">
+                                <label for="datasetName">Dataset Name *</label>
+                                <input type="text" id="datasetName" required placeholder="e.g., C# Code Examples">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="datasetDescription">Description</label>
+                                <textarea id="datasetDescription" placeholder="Describe your dataset..."></textarea>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="datasetFormat">Format *</label>
+                                <select id="datasetFormat" required>
+                                    <option value="">Select format...</option>
+                                    <option value="chat">ChatML - Conversational format</option>
+                                    <option value="instruct">Instruct - Instruction-response pairs</option>
+                                    <option value="qa">Q&A - Question-answer pairs</option>
+                                    <option value="completion">Completion - Raw text</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="datasetFile">Dataset File (JSON/JSONL) *</label>
+                                <input type="file" id="datasetFile" accept=".json,.jsonl" required>
+                                <small class="help-text">Upload a JSON or JSONL file with training examples</small>
+                            </div>
+                            
+                            <div class="format-example" id="formatExample"></div>
+                            
+                            <button type="submit" class="btn-primary btn-lg">📤 Upload & Validate</button>
+                        </form>
+                    </div>
+
+                    <!-- Create Training Job -->
+                    <div class="panel">
+                        <h2>⚙️ Create Training Job</h2>
+                        <form id="createJobForm">
+                            <div class="form-group">
+                                <label for="jobName">Job Name *</label>
+                                <input type="text" id="jobName" required placeholder="e.g., Qwen-CSharp-v1">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="baseModel">Base Model *</label>
+                                <select id="baseModel" required>
+                                    <option value="">Select base model...</option>
+                                    <optgroup label="Recommended for Fine-tuning">
+                                        <option value="qwen2.5-coder:7b">Qwen 2.5 Coder 7B (Fastest)</option>
+                                        <option value="qwen2.5-coder:14b">Qwen 2.5 Coder 14B</option>
+                                        <option value="deepseek-coder-v2:16b">DeepSeek Coder 16B</option>
+                                        <option value="codellama:13b">CodeLlama 13B</option>
+                                        <option value="llama3.1:8b">Llama 3.1 8B</option>
+                                    </optgroup>
+                                    <optgroup label="Larger Models (Slower)">
+                                        <option value="qwen2.5-coder:32b-q4_K_M">Qwen 2.5 Coder 32B</option>
+                                        <option value="deepseek-coder-v2:33b-q4_K_M">DeepSeek Coder 33B</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="trainingDataset">Training Dataset *</label>
+                                <select id="trainingDataset" required>
+                                    <option value="">Select dataset...</option>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="outputModelName">Output Model Name *</label>
+                                <input type="text" id="outputModelName" required placeholder="my-finetuned-model">
+                                <small class="help-text">This will be the name in Ollama</small>
+                            </div>
+                            
+                            <div class="section-title">Training Parameters</div>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="learningRate">Learning Rate</label>
+                                    <input type="number" id="learningRate" value="0.0002" step="0.00001" min="0.00001" max="0.001">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="numEpochs">Epochs</label>
+                                    <input type="number" id="numEpochs" value="3" min="1" max="10">
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="batchSize">Batch Size</label>
+                                    <input type="number" id="batchSize" value="4" min="1" max="32">
+                                </div>
+                            </div>
+                            
+                            <div class="section-title">LoRA Configuration</div>
+                            <small class="help-text">LoRA (Low-Rank Adaptation) efficiently fine-tunes models</small>
+                            
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="loraR">LoRA Rank (r)</label>
+                                    <input type="number" id="loraR" value="16" min="8" max="128" step="8">
+                                    <small>Higher = more capacity, slower</small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="loraAlpha">LoRA Alpha</label>
+                                    <input type="number" id="loraAlpha" value="32" min="8" max="128" step="8">
+                                    <small>Scaling factor (usually 2x rank)</small>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="loraDropout">LoRA Dropout</label>
+                                    <input type="number" id="loraDropout" value="0.05" min="0" max="0.5" step="0.05">
+                                    <small>Prevents overfitting</small>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="maxSeqLength">Max Sequence Length</label>
+                                <input type="number" id="maxSeqLength" value="512" min="128" max="4096" step="128">
+                                <small class="help-text">Longer = more context, more memory</small>
+                            </div>
+                            
+                            <div class="estimated-time">
+                                <strong>⏱️ Estimated Time:</strong> <span id="estimatedTime">~2-4 hours (GPU dependent)</span>
+                            </div>
+                            
+                            <button type="submit" class="btn-primary btn-lg">🚀 Start Training</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Job Details Modal -->
+        <div id="jobModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Training Job Details</h2>
+                    <button onclick="closeJobModal()" class="btn-close">✕</button>
+                </div>
+                <div id="jobDetails"></div>
+            </div>
+        </div>
+
+        <!-- Model Details Modal -->
+        <div id="modelModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Model Details</h2>
+                    <button onclick="closeModelModal()" class="btn-close">✕</button>
+                </div>
+                <div id="modelDetails"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/ui/finetuning.js"></script>
+</body>
+</html>
+
