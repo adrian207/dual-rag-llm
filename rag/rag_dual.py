@@ -63,6 +63,9 @@ class AppState:
     model_performance: Dict[str, Dict[str, Any]] = {}  # Track performance per model
     ab_tests: Dict[str, ABTestConfig] = {}  # Active A/B tests
     ab_results: Dict[str, List[ABTestResult]] = {}  # Test results
+    datasets: Dict[str, DatasetConfig] = {}  # Fine-tuning datasets
+    finetuning_jobs: Dict[str, FineTuningConfig] = {}  # Fine-tuning jobs
+    model_versions: Dict[str, ModelVersion] = {}  # Fine-tuned model registry
 
 app_state = AppState()
 
@@ -182,6 +185,92 @@ class ABTestStatistics(BaseModel):
     winner_metric: Optional[str] = None
     sample_sizes: Dict[str, int]
     recommendation: str
+
+# Fine-tuning Models
+class DatasetFormat(str, Enum):
+    """Dataset formats"""
+    CHAT = "chat"  # ChatML format
+    INSTRUCT = "instruct"  # Instruction-response pairs
+    COMPLETION = "completion"  # Raw text completion
+    QA = "qa"  # Question-answer pairs
+
+class TrainingStatus(str, Enum):
+    """Training job status"""
+    PENDING = "pending"
+    PREPARING = "preparing"
+    TRAINING = "training"
+    EVALUATING = "evaluating"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+class DatasetConfig(BaseModel):
+    """Fine-tuning dataset configuration"""
+    dataset_id: str
+    name: str
+    description: str
+    format: DatasetFormat
+    file_path: str
+    num_examples: int = 0
+    created_at: str
+    validated: bool = False
+    validation_errors: List[str] = []
+
+class FineTuningConfig(BaseModel):
+    """Fine-tuning job configuration"""
+    job_id: str
+    name: str
+    base_model: str  # e.g., "qwen2.5-coder:7b"
+    dataset_id: str
+    status: TrainingStatus = TrainingStatus.PENDING
+    
+    # Training parameters
+    learning_rate: float = Field(default=2e-4, gt=0)
+    num_epochs: int = Field(default=3, ge=1, le=10)
+    batch_size: int = Field(default=4, ge=1, le=32)
+    max_seq_length: int = Field(default=512, ge=128, le=4096)
+    
+    # LoRA parameters
+    lora_r: int = Field(default=16, ge=8, le=128)
+    lora_alpha: int = Field(default=32, ge=8, le=128)
+    lora_dropout: float = Field(default=0.05, ge=0, le=0.5)
+    
+    # Output
+    output_model_name: str
+    created_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    
+    # Metrics
+    training_loss: List[float] = []
+    eval_loss: List[float] = []
+    best_eval_loss: Optional[float] = None
+    
+    # Error handling
+    error_message: Optional[str] = None
+
+class ModelVersion(BaseModel):
+    """Fine-tuned model version"""
+    model_id: str
+    name: str
+    base_model: str
+    version: str
+    description: str
+    created_at: str
+    job_id: str
+    
+    # Performance metrics
+    training_metrics: Dict[str, Any] = {}
+    evaluation_metrics: Dict[str, Any] = {}
+    
+    # Deployment
+    deployed: bool = False
+    ollama_model_name: Optional[str] = None
+    
+    # Metadata
+    dataset_id: str
+    num_parameters: Optional[int] = None
+    model_size_mb: Optional[float] = None
 
 class SystemStats(BaseModel):
     """System statistics"""
@@ -306,7 +395,7 @@ async def search_github(query: str, repo: Optional[str] = None, max_results: int
                     "repository": repo,
                     "sha": item.sha
                 })
-        else:
+    else:
             # Search across GitHub
             code_results = app_state.github_client.search_code(query)
             
@@ -380,14 +469,14 @@ def load_index(is_ms: bool) -> Optional[VectorStoreIndex]:
         if not is_ms and app_state.oss_index:
             return app_state.oss_index
         
-        path = "/app/indexes/chroma_ms" if is_ms else "/app/indexes/chroma_oss"
+    path = "/app/indexes/chroma_ms" if is_ms else "/app/indexes/chroma_oss"
         collection_name = "msdocs" if is_ms else "ossdocs"
         
         if not os.path.exists(path):
             logger.error("index_not_found", path=path)
             return None
         
-        client = PersistentClient(path=path)
+    client = PersistentClient(path=path)
         collection = client.get_collection(collection_name)
         vector_store = ChromaVectorStore(chroma_collection=collection)
         index = VectorStoreIndex.from_vector_store(vector_store)
@@ -1356,7 +1445,7 @@ async def query_endpoint(q: Query):
             )
         
         # Load RAG index
-        index = load_index(is_ms)
+    index = load_index(is_ms)
         if index is None:
             raise HTTPException(
                 status_code=503,
@@ -1366,8 +1455,8 @@ async def query_endpoint(q: Query):
         app_state.tool_usage["rag"] += 1
         
         # Retrieve context
-        retriever = index.as_retriever(similarity_top_k=3)
-        nodes = retriever.retrieve(q.question)
+    retriever = index.as_retriever(similarity_top_k=3)
+    nodes = retriever.retrieve(q.question)
         
         if not nodes:
             context = "No relevant context found in documentation."

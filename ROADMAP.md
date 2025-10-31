@@ -72,7 +72,7 @@ Future development plans and enhancement ideas for the dual RAG system.
 ### Model Management
 - [x] Dynamic model switching ✅ **(v1.3.0 - Completed)**
 - [x] Model A/B testing framework ✅ **(v1.4.0 - Completed)**
-- [ ] Custom model fine-tuning pipeline
+- [x] Custom model fine-tuning pipeline ✅ **(v1.5.0 - Completed)**
 - [ ] Model ensemble strategies
 - [ ] Automatic model selection based on query type
 

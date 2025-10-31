@@ -45,6 +45,16 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 
 ## Key Features
 
+### 🔧 Custom Model Fine-tuning (v1.5.0)
+- **Dataset Management**: Upload and validate training datasets (Chat, Instruct, Q&A, Completion formats)
+- **LoRA/QLoRA Training**: Efficient fine-tuning with Low-Rank Adaptation
+- **Job Orchestration**: Create, monitor, and manage training jobs
+- **Model Registry**: Version control for fine-tuned models
+- **Performance Tracking**: Training/eval loss monitoring
+- **One-Click Deployment**: Export to Ollama format
+- **Interactive Dashboard**: Complete UI for managing pipeline
+- **Hyperparameter Configuration**: Learning rate, epochs, batch size, LoRA params
+
 ### 🧪 A/B Testing Framework (v1.4.0)
 - **Systematic Testing**: Compare models with statistical rigor
 - **Traffic Splitting**: Route % of queries to each model (customizable)
