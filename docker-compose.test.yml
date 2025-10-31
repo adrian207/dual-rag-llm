@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # PostgreSQL with pgvector for database tests
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: dual-rag-test-postgres
+    environment:
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+      POSTGRES_DB: test_dual_rag
+    ports:
+      - "5433:5432"
+    volumes:
+      - test-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testuser -d test_dual_rag"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  # Redis for cache tests
+  redis:
+    image: redis:7-alpine
+    container_name: dual-rag-test-redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - test-network
+
+  # Test runner container
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: dual-rag-test-runner
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      # Test environment
+      TESTING: "true"
+      LOG_LEVEL: DEBUG
+      
+      # PostgreSQL config
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: test_dual_rag
+      POSTGRES_USER: testuser
+      POSTGRES_PASSWORD: testpass
+      
+      # Redis config
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      
+      # Coverage config
+      COVERAGE_FILE: /app/.coverage
+    volumes:
+      - .:/app
+      - test-coverage:/app/htmlcov
+    working_dir: /app
+    command: >
+      sh -c "
+        echo '🧪 Running comprehensive test suite...' &&
+        echo '' &&
+        pytest tests/unit/ -v --cov=rag --cov-report=html --cov-report=term-missing --cov-report=xml -x &&
+        echo '' &&
+        echo '✅ All tests completed!'
+      "
+    networks:
+      - test-network
+
+volumes:
+  test-postgres-data:
+  test-coverage:
+
+networks:
+  test-network:
+    driver: bridge
+
