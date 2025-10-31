@@ -2,405 +2,656 @@
 
 **Author:** Adrian Johnson <adrian207@gmail.com>
 
-This guide outlines the development workflow, branching strategy, and contribution guidelines.
+Thank you for your interest in contributing! This document provides guidelines for contributing to the project.
+
+---
+
+## Table of Contents
+
+1. [Code of Conduct](#code-of-conduct)
+2. [How to Contribute](#how-to-contribute)
+3. [Development Setup](#development-setup)
+4. [Coding Standards](#coding-standards)
+5. [Testing Guidelines](#testing-guidelines)
+6. [Documentation](#documentation)
+7. [Pull Request Process](#pull-request-process)
+8. [Release Process](#release-process)
+
+---
+
+## Code of Conduct
+
+###  Our Pledge
+
+We are committed to providing a welcoming and inclusive environment for all contributors, regardless of:
+- Experience level
+- Gender identity
+- Sexual orientation
+- Disability
+- Personal appearance
+- Race or ethnicity
+- Age
+- Religion
+
+### Our Standards
+
+**Examples of positive behavior:**
+✅ Using welcoming and inclusive language  
+✅ Being respectful of differing viewpoints  
+✅ Gracefully accepting constructive criticism  
+✅ Focusing on what is best for the community  
+✅ Showing empathy towards others  
+
+**Examples of unacceptable behavior:**
+❌ Trolling, insulting, or derogatory comments  
+❌ Public or private harassment  
+❌ Publishing others' private information  
+❌ Other conduct which could be considered inappropriate  
+
+### Enforcement
+
+Instances of abusive behavior may be reported to adrian207@gmail.com. All complaints will be reviewed and investigated promptly.
+
+---
+
+## How to Contribute
+
+### Reporting Bugs
+
+Before creating a bug report:
+1. **Search existing issues** to avoid duplicates
+2. **Verify** the bug exists in the latest version
+3. **Collect** relevant information (logs, screenshots, environment)
+
+**Bug Report Template:**
+```markdown
+## Bug Description
+Clear description of the bug
+
+## Steps to Reproduce
+1. Step 1
+2. Step 2
+3. ...
+
+## Expected Behavior
+What you expected to happen
+
+## Actual Behavior
+What actually happened
+
+## Environment
+- OS: [e.g., Ubuntu 22.04]
+- Docker version: [e.g., 24.0.5]
+- GPU: [e.g., NVIDIA RTX 3090]
+- Version: [e.g., 1.11.0]
+
+## Logs
+```
+Relevant log output
+```
+
+## Additional Context
+Screenshots, error messages, etc.
+```
+
+### Suggesting Features
+
+Feature requests are welcome! Please provide:
+1. **Clear use case**: Why is this feature needed?
+2. **Proposed solution**: How should it work?
+3. **Alternatives considered**: Other approaches you thought about
+4. **Additional context**: Examples, mockups, references
+
+**Feature Request Template:**
+```markdown
+## Feature Description
+Clear description of the feature
+
+## Problem It Solves
+What problem does this address?
+
+## Proposed Solution
+How should this work?
+
+## Alternatives Considered
+Other approaches you considered
+
+## Additional Context
+Examples, mockups, references
+```
+
+### Improving Documentation
+
+Documentation improvements are always appreciated:
+- Fix typos or unclear wording
+- Add examples
+- Improve formatting
+- Translate to other languages
+- Add diagrams or screenshots
+
+---
 
 ## Development Setup
 
 ### Prerequisites
 
-- Docker with GPU support
-- Python 3.11+
-- Git
-- NVIDIA Container Toolkit (for GPU)
+- **Python 3.11+**
+- **Docker & Docker Compose**
+- **Git**
+- **NVIDIA GPU** (optional but recommended)
 
-### Local Development Setup
+### Fork & Clone
 
 ```bash
-# Clone the repository
-git clone https://github.com/adrian207/dual-rag-llm.git
+# Fork the repository on GitHub first, then:
+
+git clone https://github.com/YOUR_USERNAME/dual-rag-llm.git
 cd dual-rag-llm
 
-# Create development branch
+# Add upstream remote
+git remote add upstream https://github.com/adrian207/dual-rag-llm.git
+```
+
+### Local Development
+
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install development dependencies
+pip install -r rag/requirements.txt
+pip install -r rag/requirements-dev.txt  # If available
+
+# Start services
+docker-compose up -d
+
+# Run in development mode
+cd rag
+uvicorn rag_dual:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Branch Strategy
+
+- `main`: Production-ready code
+- `azure/deployment`: Azure-specific branch
+- `feature/*`: New features
+- `bugfix/*`: Bug fixes
+- `docs/*`: Documentation updates
+
+**Create a feature branch:**
+```bash
+git checkout main
+git pull upstream main
 git checkout -b feature/your-feature-name
-
-# Set up development environment
-make setup
-
-# Start services in development mode
-docker compose up -d
 ```
-
-## Branching Strategy
-
-### Main Branches
-
-- **`main`** - Production-ready code, protected branch
-- **`develop`** - Integration branch for features (create if needed)
-
-### Feature Branches
-
-Create from `main` or `develop`:
-
-```bash
-git checkout -b feature/feature-name
-git checkout -b bugfix/bug-description
-git checkout -b hotfix/critical-fix
-git checkout -b docs/documentation-update
-```
-
-### Branch Naming Convention
-
-| Type | Pattern | Example |
-|------|---------|---------|
-| Feature | `feature/description` | `feature/add-redis-cache` |
-| Bug Fix | `bugfix/description` | `bugfix/fix-index-loading` |
-| Hot Fix | `hotfix/description` | `hotfix/memory-leak` |
-| Documentation | `docs/description` | `docs/api-examples` |
-| Refactor | `refactor/description` | `refactor/async-handlers` |
-| Performance | `perf/description` | `perf/optimize-embeddings` |
-
-## Versioning Strategy
-
-We follow [Semantic Versioning](https://semver.org/) (SemVer):
-
-**Format:** `MAJOR.MINOR.PATCH`
-
-- **MAJOR** - Breaking changes
-- **MINOR** - New features (backward compatible)
-- **PATCH** - Bug fixes (backward compatible)
-
-### Version Bumping
-
-Update these files when changing version:
-
-1. `VERSION`
-2. `rag/__init__.py` (`__version__`)
-3. `CHANGELOG.md`
-
-```bash
-# Example: Bumping to 1.1.0
-echo "1.1.0" > VERSION
-sed -i 's/__version__ = ".*"/__version__ = "1.1.0"/' rag/__init__.py
-# Update CHANGELOG.md manually
-```
-
-## Development Workflow
-
-### 1. Create Feature Branch
-
-```bash
-git checkout main
-git pull origin main
-git checkout -b feature/your-feature
-```
-
-### 2. Make Changes
-
-```bash
-# Edit files
-# Test locally
-make test
-
-# Check logs
-make logs-rag
-```
-
-### 3. Test Thoroughly
-
-```bash
-# Run linting (if you add Python linting)
-# pylint rag/*.py
-
-# Run tests
-make test
-
-# Check health
-make health
-
-# Manual testing
-curl -X POST http://localhost:8000/query \
-  -H "Content-Type: application/json" \
-  -d '{"question": "test", "file_ext": ".py"}'
-```
-
-### 4. Commit Changes
-
-Follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-```bash
-git add -A
-git commit -m "feat: add Redis caching layer
-
-- Implement Redis connection pooling
-- Add cache middleware for query responses
-- Update docker-compose with Redis service
-- Add cache invalidation on index rebuild
-
-Closes #123"
-```
-
-**Commit Types:**
-- `feat:` - New feature
-- `fix:` - Bug fix
-- `docs:` - Documentation
-- `style:` - Formatting
-- `refactor:` - Code restructuring
-- `perf:` - Performance improvement
-- `test:` - Tests
-- `chore:` - Maintenance
-
-### 5. Push and Create PR
-
-```bash
-git push origin feature/your-feature
-```
-
-Then create a Pull Request on GitHub.
-
-## Release Process
-
-### For Maintainers
-
-#### Minor/Major Release
-
-```bash
-# 1. Update version
-echo "1.1.0" > VERSION
-sed -i 's/__version__ = ".*"/__version__ = "1.1.0"/' rag/__init__.py
-
-# 2. Update CHANGELOG.md
-# Add new section with changes
-
-# 3. Commit
-git add VERSION rag/__init__.py CHANGELOG.md
-git commit -m "chore: bump version to 1.1.0"
-
-# 4. Tag
-git tag -a v1.1.0 -m "Release v1.1.0: Description
-
-- Feature 1
-- Feature 2
-- Bug fix 1
-
-Author: Adrian Johnson <adrian207@gmail.com>
-Date: $(date +%Y-%m-%d)"
-
-# 5. Push
-git push origin main
-git push origin v1.1.0
-```
-
-#### Patch Release
-
-```bash
-# Quick fix process
-git checkout -b hotfix/critical-bug
-# Fix the bug
-git commit -m "fix: resolve critical memory leak"
-
-# Bump patch version
-echo "1.0.1" > VERSION
-sed -i 's/__version__ = ".*"/__version__ = "1.0.1"/' rag/__init__.py
-git commit -m "chore: bump version to 1.0.1"
-
-# Merge and tag
-git checkout main
-git merge hotfix/critical-bug
-git tag -a v1.0.1 -m "Hotfix v1.0.1: Memory leak fix"
-git push origin main v1.0.1
-```
-
-## Code Quality Standards
-
-### Python Code
-
-- Follow PEP 8 style guide
-- Use type hints where possible
-- Add docstrings to all functions
-- Maximum line length: 100 characters
-- Use meaningful variable names
-
-```python
-def process_query(
-    question: str,
-    file_ext: str,
-    top_k: int = 3
-) -> QueryResponse:
-    """
-    Process user query with context retrieval.
-    
-    Args:
-        question: User's question text
-        file_ext: File extension for routing
-        top_k: Number of context chunks to retrieve
-        
-    Returns:
-        QueryResponse with answer and metadata
-        
-    Raises:
-        HTTPException: If processing fails
-    """
-    # Implementation
-```
-
-### Shell Scripts
-
-- Use `#!/bin/bash` shebang
-- Add `set -e` for error handling
-- Comment complex sections
-- Test on both Linux and macOS
-
-### Docker
-
-- Multi-stage builds when possible
-- Minimize layer count
-- Use specific version tags, not `latest`
-- Add health checks
-- Optimize for caching
-
-## Testing Guidelines
-
-### Manual Testing Checklist
-
-- [ ] Service starts without errors
-- [ ] Health endpoint returns 200
-- [ ] Query endpoint works for both MS and OSS paths
-- [ ] Indexes build successfully
-- [ ] Logs are structured and readable
-- [ ] Error cases handled gracefully
-- [ ] Performance is acceptable (< 10s per query)
-
-### Adding Automated Tests
-
-[Unverified] When adding tests:
-
-```python
-# tests/test_rag_dual.py
-import pytest
-from rag_dual import get_model_for_extension
-
-def test_model_routing_ms_extensions():
-    """Test that MS extensions route to Qwen model"""
-    model, source = get_model_for_extension(".cs")
-    assert model == "qwen2.5-coder:32b-q4_K_M"
-    assert source == "Microsoft"
-
-def test_model_routing_oss_extensions():
-    """Test that OSS extensions route to DeepSeek model"""
-    model, source = get_model_for_extension(".py")
-    assert model == "deepseek-coder-v2:33b-q4_K_M"
-    assert source == "OpenSource"
-```
-
-## Documentation Standards
-
-- Update README.md for user-facing changes
-- Update CHANGELOG.md for every release
-- Add inline comments for complex logic
-- Update API docs (docstrings) when changing endpoints
-- Include examples for new features
-
-## Development Tips
-
-### Quick Iteration
-
-```bash
-# Rebuild only RAG service
-docker compose build rag
-docker compose up -d rag
-
-# View live logs
-make dev-logs
-
-# Shell into container
-make dev-shell
-```
-
-### Debugging
-
-```bash
-# Check service logs
-docker compose logs -f rag
-
-# Check Ollama logs
-docker compose logs -f ollama
-
-# Inspect container
-docker compose exec rag /bin/bash
-python -c "from rag_dual import *; print(app_state)"
-
-# Check GPU usage
-nvidia-smi
-
-# Check disk usage
-du -sh rag/indexes/*
-```
-
-### Performance Profiling
-
-```python
-# Add to rag_dual.py for profiling
-import time
-
-def profile_query(q: Query):
-    start = time.time()
-    
-    # ... existing code ...
-    
-    logger.info(
-        "query_performance",
-        total_time=time.time() - start,
-        retrieval_time=retrieval_time,
-        llm_time=llm_time
-    )
-```
-
-## Common Development Tasks
-
-### Adding a New Model
-
-1. Pull the model: `docker exec ollama ollama pull model-name`
-2. Update constants in `rag/rag_dual.py`
-3. Update routing logic in `get_model_for_extension()`
-4. Update documentation
-5. Test thoroughly
-
-### Adding a New Document Format
-
-1. Check if LlamaIndex supports it (likely does)
-2. Update `required_exts` in `ingest_docs.py`
-3. Test with sample documents
-4. Update documentation
-
-### Adding a New API Endpoint
-
-1. Add endpoint to `rag/rag_dual.py`
-2. Add Pydantic models for request/response
-3. Add error handling
-4. Add logging
-5. Test endpoint
-6. Update README.md
-
-### Optimizing Performance
-
-1. Profile with `time.perf_counter()`
-2. Check for blocking operations
-3. Add caching where appropriate
-4. Consider async alternatives
-5. Monitor memory usage
-6. Test with realistic data volumes
-
-## Getting Help
-
-- **Issues**: Create GitHub issue with detailed description
-- **Questions**: Discussions tab on GitHub
-- **Email**: adrian207@gmail.com
-
-## License
-
-[Specify your license here]
 
 ---
 
-Thank you for contributing to the Dual RAG LLM System! 🚀
+## Coding Standards
 
+### Python Style Guide
+
+Follow **PEP 8** with these specifics:
+
+**Formatting:**
+- **Line length**: 100 characters (not 79)
+- **Indentation**: 4 spaces
+- **Quotes**: Double quotes for strings
+- **Imports**: Organized (stdlib, third-party, local)
+
+**Example:**
+```python
+"""
+Module docstring.
+
+Author: Your Name <your.email@example.com>
+"""
+
+import os
+from typing import List, Optional
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+
+from .utils import helper_function
+
+
+class MyModel(BaseModel):
+    """Model docstring."""
+    
+    name: str
+    value: int
+    optional_field: Optional[str] = None
+
+
+async def my_function(param: str) -> dict:
+    """
+    Function docstring.
+    
+    Args:
+        param: Description of param
+        
+    Returns:
+        Dictionary with results
+        
+    Raises:
+        HTTPException: If something goes wrong
+    """
+    if not param:
+        raise HTTPException(status_code=400, detail="param required")
+    
+    result = await helper_function(param)
+    return {"status": "success", "data": result}
+```
+
+### Type Hints
+
+Use type hints for all function signatures:
+
+```python
+# Good
+def process_query(query: str, max_results: int = 10) -> List[dict]:
+    ...
+
+# Bad
+def process_query(query, max_results=10):
+    ...
+```
+
+### Docstrings
+
+Use **Google-style docstrings**:
+
+```python
+def complex_function(arg1: str, arg2: int, arg3: Optional[bool] = None) -> dict:
+    """
+    One-line summary.
+    
+    Longer description if needed. Can span multiple lines
+    and include code examples.
+    
+    Args:
+        arg1: Description of arg1
+        arg2: Description of arg2
+        arg3: Description of arg3. Defaults to None.
+    
+    Returns:
+        Dictionary containing:
+        - key1: Description
+        - key2: Description
+    
+    Raises:
+        ValueError: If arg2 is negative
+        KeyError: If required key missing
+        
+    Example:
+        >>> result = complex_function("test", 5)
+        >>> print(result)
+        {'key1': 'value1', 'key2': 'value2'}
+    """
+    pass
+```
+
+### Logging
+
+Use **structlog** for structured logging:
+
+```python
+import structlog
+
+logger = structlog.get_logger()
+
+# Good
+logger.info("query_processed", query_id=query_id, model=model, cached=cached)
+
+# Bad
+logger.info(f"Processed query {query_id} with model {model}")
+```
+
+### Error Handling
+
+```python
+# Good - Specific exceptions
+try:
+    result = await process_query(query)
+except ValueError as e:
+    logger.error("invalid_query", error=str(e))
+    raise HTTPException(status_code=400, detail=str(e))
+except Exception as e:
+    logger.exception("unexpected_error")
+    raise HTTPException(status_code=500, detail="Internal error")
+
+# Bad - Bare except
+try:
+    result = await process_query(query)
+except:
+    pass
+```
+
+### Async Best Practices
+
+```python
+# Good - Proper async
+async def fetch_data(url: str) -> dict:
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+        return response.json()
+
+# Bad - Blocking in async
+async def fetch_data(url: str) -> dict:
+    response = requests.get(url)  # Blocks event loop!
+    return response.json()
+```
+
+---
+
+## Testing Guidelines
+
+### Test Structure
+
+```
+tests/
+├── __init__.py
+├── conftest.py           # Fixtures
+├── test_api.py          # API tests
+├── test_rag.py          # RAG functionality
+├── test_tools.py        # Tool integrations
+└── test_validation.py   # Validation/quality
+```
+
+### Writing Tests
+
+```python
+import pytest
+from fastapi.testclient import TestClient
+
+from rag.rag_dual import app
+
+
+client = TestClient(app)
+
+
+def test_health_check():
+    """Test health check endpoint."""
+    response = client.get("/health")
+    assert response.status_code == 200
+    assert response.json()["status"] in ["healthy", "degraded"]
+
+
+@pytest.mark.asyncio
+async def test_query_endpoint():
+    """Test query endpoint."""
+    response = client.post("/query", json={
+        "question": "What is Python?",
+        "file_ext": ".py"
+    })
+    
+    assert response.status_code == 200
+    data = response.json()
+    assert "answer" in data
+    assert "metadata" in data
+    assert len(data["answer"]) > 0
+
+
+@pytest.fixture
+def mock_ollama(monkeypatch):
+    """Mock Ollama API calls."""
+    async def mock_generate(*args, **kwargs):
+        return {"response": "Mocked response"}
+    
+    monkeypatch.setattr("ollama.AsyncClient.generate", mock_generate)
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run specific file
+pytest tests/test_api.py
+
+# Run with coverage
+pytest --cov=rag --cov-report=html
+
+# Run only fast tests
+pytest -m "not slow"
+```
+
+### Test Coverage
+
+Aim for **80%+ coverage** for new code:
+
+```bash
+pytest --cov=rag --cov-report=term-missing
+```
+
+---
+
+## Documentation
+
+### Code Documentation
+
+- **All public functions** must have docstrings
+- **Complex logic** should have inline comments
+- **Type hints** for all parameters and returns
+
+### User Documentation
+
+When adding features, update:
+- `README.md` - Overview and quick start
+- `docs/USER_GUIDE.md` - Detailed usage
+- `docs/API_REFERENCE.md` - API documentation
+- `CHANGELOG.md` - Release notes
+
+### Documentation Format
+
+Use **Markdown** with clear structure:
+
+```markdown
+# Title (H1 - once per document)
+
+## Section (H2 - main sections)
+
+### Subsection (H3 - details)
+
+**Bold** for emphasis
+*Italic* for terms
+`code` for inline code
+
+```python
+# Code blocks with language
+def example():
+    pass
+```
+
+[Links](https://example.com)
+
+- Bullet points
+- For lists
+
+1. Numbered lists
+2. For steps
+
+> Blockquotes for important notes
+
+| Tables | For |
+|--------|-----|
+| Structured | Data |
+```
+
+---
+
+## Pull Request Process
+
+### Before Submitting
+
+1. ✅ **Code compiles** without errors
+2. ✅ **Tests pass** locally
+3. ✅ **Documentation updated**
+4. ✅ **CHANGELOG.md** updated (if user-facing change)
+5. ✅ **Code follows** style guidelines
+6. ✅ **Commits are** descriptive
+
+### PR Title Format
+
+```
+<type>(<scope>): <description>
+
+Examples:
+feat(api): add new validation endpoint
+fix(cache): resolve redis connection timeout
+docs(readme): update installation instructions
+refactor(rag): improve query processing performance
+test(api): add integration tests for tools
+```
+
+**Types:**
+- `feat`: New feature
+- `fix`: Bug fix
+- `docs`: Documentation only
+- `style`: Formatting changes
+- `refactor`: Code refactoring
+- `test`: Adding tests
+- `chore`: Maintenance tasks
+
+### PR Description Template
+
+```markdown
+## Description
+Clear description of changes
+
+## Type of Change
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
+
+## Testing
+Describe testing done
+
+## Checklist
+- [ ] Code follows style guidelines
+- [ ] Self-review completed
+- [ ] Comments added for complex code
+- [ ] Documentation updated
+- [ ] Tests added/updated
+- [ ] All tests pass
+- [ ] No new warnings
+```
+
+### Review Process
+
+1. **Automated checks** must pass (if CI/CD configured)
+2. **At least one review** required
+3. **Address feedback** promptly
+4. **Squash commits** if requested
+5. **Maintainer merges** after approval
+
+---
+
+## Release Process
+
+### Version Numbering
+
+Follow **Semantic Versioning** (SemVer):
+
+```
+MAJOR.MINOR.PATCH
+
+1.11.0
+│  │  └─ Patch: Bug fixes
+│  └──── Minor: New features (backward compatible)
+└─────── Major: Breaking changes
+```
+
+### Release Steps
+
+1. **Update version** in:
+   - `rag/__init__.py`
+   - `VERSION` file
+   - `CHANGELOG.md`
+
+2. **Create release branch:**
+```bash
+git checkout -b release/v1.12.0
+```
+
+3. **Update CHANGELOG.md:**
+```markdown
+## [1.12.0] - 2024-11-01
+
+### Added
+- New feature X
+- New feature Y
+
+### Changed
+- Improved feature Z
+
+### Fixed
+- Bug fix A
+```
+
+4. **Commit and tag:**
+```bash
+git add -A
+git commit -m "chore: release v1.12.0"
+git tag -a v1.12.0 -m "Release v1.12.0: Description"
+```
+
+5. **Merge to main:**
+```bash
+git checkout main
+git merge release/v1.12.0 --no-ff
+git push origin main
+git push origin v1.12.0
+```
+
+6. **Sync to azure/deployment:**
+```bash
+git checkout azure/deployment
+git merge main -m "merge: sync v1.12.0 from main"
+git push origin azure/deployment
+```
+
+7. **Create GitHub Release:**
+   - Go to repository → Releases
+   - Click "Draft a new release"
+   - Select tag v1.12.0
+   - Copy from CHANGELOG.md
+   - Publish release
+
+---
+
+## Recognition
+
+Contributors will be:
+- Listed in `CONTRIBUTORS.md`
+- Mentioned in release notes
+- Credited in relevant documentation
+
+---
+
+## Questions?
+
+- **GitHub Discussions**: (Coming soon)
+- **GitHub Issues**: For bug reports/feature requests
+- **Email**: adrian207@gmail.com
+
+---
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the MIT License.
+
+---
+
+**Thank you for contributing!** 🎉
+
+Your contributions help make this project better for everyone.
+
+---
+
+*Last updated: October 31, 2024*  
+*Author: Adrian Johnson <adrian207@gmail.com>*
