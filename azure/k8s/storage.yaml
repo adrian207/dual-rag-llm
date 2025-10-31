@@ -1,0 +1,56 @@
+# Storage Class for Azure Disks
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: managed-premium-retain
+provisioner: kubernetes.io/azure-disk
+parameters:
+  storageaccounttype: Premium_LRS
+  kind: Managed
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+
+---
+# Persistent Volume Claim for Ollama Models
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-models-pvc
+  namespace: dual-rag
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-premium-retain
+  resources:
+    requests:
+      storage: 100Gi
+
+---
+# Persistent Volume Claim for RAG Indexes
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rag-indexes-pvc
+  namespace: dual-rag
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: managed-premium-retain
+  resources:
+    requests:
+      storage: 50Gi
+
+---
+# ConfigMap for Environment Variables
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rag-config
+  namespace: dual-rag
+data:
+  OLLAMA_API: "http://ollama-service:11434"
+  LOG_LEVEL: "INFO"
+  PYTHONUNBUFFERED: "1"
+  EMBEDDING_MODEL: "all-MiniLM-L6-v2"
+
