@@ -72,6 +72,8 @@ class AppState:
     query_type_performance: Dict[str, QueryTypePerformance] = {}  # key: f"{query_type}_{model}"
     selection_decisions: List[SelectionDecision] = []  # History of selections
     auto_selection_config: AutoSelectionConfig = AutoSelectionConfig()
+    validations: List[AnswerValidation] = []  # Validation history
+    validation_config: ValidationConfig = ValidationConfig()
 
 app_state = AppState()
 
@@ -408,6 +410,65 @@ class SelectionDecision(BaseModel):
     response_time: Optional[float] = None
     user_rating: Optional[int] = None
 
+# Answer Validation Models
+class ValidationCheck(str, Enum):
+    """Types of validation checks"""
+    FACTUALITY = "factuality"
+    SOURCE_VERIFICATION = "source_verification"
+    CONSISTENCY = "consistency"
+    COMPLETENESS = "completeness"
+    RELEVANCE = "relevance"
+    CLARITY = "clarity"
+    CODE_VALIDITY = "code_validity"
+
+class ValidationResult(BaseModel):
+    """Result of a validation check"""
+    check_type: ValidationCheck
+    passed: bool
+    score: float  # 0.0 to 1.0
+    issues: List[str] = []
+    suggestions: List[str] = []
+    details: Dict[str, Any] = {}
+
+class AnswerValidation(BaseModel):
+    """Complete validation of an answer"""
+    query_id: str
+    query: str
+    answer: str
+    model: str
+    timestamp: str
+    
+    # Validation results
+    checks: List[ValidationResult]
+    overall_score: float  # 0.0 to 1.0
+    confidence: float  # 0.0 to 1.0
+    
+    # Metadata
+    source_verified: bool = False
+    sources_used: List[str] = []
+    context_matches: int = 0
+    
+    # Quality metrics
+    answer_length: int
+    code_blocks: int = 0
+    has_examples: bool = False
+    
+    # Recommendations
+    approved: bool = True
+    warnings: List[str] = []
+    corrections: List[Dict[str, str]] = []
+
+class ValidationConfig(BaseModel):
+    """Configuration for validation system"""
+    enabled: bool = True
+    min_confidence_threshold: float = 0.5
+    enable_factuality_check: bool = True
+    enable_source_verification: bool = True
+    enable_consistency_check: bool = True
+    enable_completeness_check: bool = True
+    enable_code_validation: bool = True
+    auto_reject_threshold: float = 0.3
+    
 class SystemStats(BaseModel):
     """System statistics"""
     cache: CacheStats
@@ -1789,6 +1850,419 @@ async def submit_selection_feedback(query_id: str, rating: int, correct_model: O
         logger.info("learned_from_feedback", wrong=decision.selected_model, correct=correct_model)
     
     return {"status": "success", "message": "Feedback recorded"}
+
+# Answer Validation Functions
+async def validate_answer(
+    query_id: str,
+    query: str,
+    answer: str,
+    model: str,
+    context: Optional[str] = None
+) -> AnswerValidation:
+    """Comprehensive answer validation"""
+    
+    if not app_state.validation_config.enabled:
+        # Return minimal validation if disabled
+        return AnswerValidation(
+            query_id=query_id,
+            query=query,
+            answer=answer,
+            model=model,
+            timestamp=datetime.now().isoformat(),
+            checks=[],
+            overall_score=1.0,
+            confidence=1.0,
+            answer_length=len(answer)
+        )
+    
+    checks = []
+    
+    # 1. Source Verification (if context available)
+    if app_state.validation_config.enable_source_verification and context:
+        source_result = check_source_verification(answer, context)
+        checks.append(source_result)
+    
+    # 2. Consistency Check
+    if app_state.validation_config.enable_consistency_check:
+        consistency_result = check_consistency(answer)
+        checks.append(consistency_result)
+    
+    # 3. Completeness Check
+    if app_state.validation_config.enable_completeness_check:
+        completeness_result = check_completeness(query, answer)
+        checks.append(completeness_result)
+    
+    # 4. Relevance Check
+    relevance_result = check_relevance(query, answer)
+    checks.append(relevance_result)
+    
+    # 5. Clarity Check
+    clarity_result = check_clarity(answer)
+    checks.append(clarity_result)
+    
+    # 6. Code Validity (if code present)
+    if app_state.validation_config.enable_code_validation:
+        code_result = check_code_validity(answer)
+        if code_result:
+            checks.append(code_result)
+    
+    # Calculate overall score
+    if checks:
+        overall_score = sum(check.score for check in checks) / len(checks)
+    else:
+        overall_score = 0.8  # Default if no checks
+    
+    # Calculate confidence
+    passed_checks = sum(1 for check in checks if check.passed)
+    confidence = passed_checks / len(checks) if checks else 0.8
+    
+    # Extract metadata
+    code_blocks = answer.count("```")
+    has_examples = any(word in answer.lower() for word in ["example", "for instance", "such as"])
+    
+    # Collect warnings and determine approval
+    warnings = []
+    approved = True
+    
+    for check in checks:
+        if not check.passed:
+            warnings.extend(check.issues)
+    
+    if overall_score < app_state.validation_config.auto_reject_threshold:
+        approved = False
+        warnings.append(f"Overall score ({overall_score:.2f}) below threshold")
+    
+    validation = AnswerValidation(
+        query_id=query_id,
+        query=query,
+        answer=answer,
+        model=model,
+        timestamp=datetime.now().isoformat(),
+        checks=checks,
+        overall_score=overall_score,
+        confidence=confidence,
+        source_verified=context is not None,
+        sources_used=[],
+        answer_length=len(answer),
+        code_blocks=code_blocks,
+        has_examples=has_examples,
+        approved=approved,
+        warnings=warnings
+    )
+    
+    # Store validation
+    app_state.validations.append(validation)
+    
+    # Keep only last 500 validations
+    if len(app_state.validations) > 500:
+        app_state.validations = app_state.validations[-500:]
+    
+    logger.info("validated_answer", query_id=query_id, score=overall_score, approved=approved)
+    
+    return validation
+
+def check_source_verification(answer: str, context: str) -> ValidationResult:
+    """Verify answer against provided context"""
+    answer_lower = answer.lower()
+    context_lower = context.lower()
+    
+    # Simple overlap check - count matching phrases
+    answer_words = set(answer_lower.split())
+    context_words = set(context_lower.split())
+    
+    overlap = len(answer_words & context_words)
+    total = len(answer_words)
+    
+    overlap_ratio = overlap / total if total > 0 else 0
+    
+    passed = overlap_ratio > 0.2  # At least 20% overlap
+    score = min(1.0, overlap_ratio * 2)  # Scale to 0-1
+    
+    issues = []
+    suggestions = []
+    
+    if not passed:
+        issues.append("Answer may not be grounded in provided context")
+        suggestions.append("Ensure answer references the context sources")
+    
+    return ValidationResult(
+        check_type=ValidationCheck.SOURCE_VERIFICATION,
+        passed=passed,
+        score=score,
+        issues=issues,
+        suggestions=suggestions,
+        details={"overlap_ratio": overlap_ratio, "overlapping_words": overlap}
+    )
+
+def check_consistency(answer: str) -> ValidationResult:
+    """Check for internal contradictions"""
+    issues = []
+    
+    # Look for contradiction indicators
+    contradictions = [
+        ("yes", "no"), ("true", "false"), ("always", "never"),
+        ("correct", "incorrect"), ("should", "shouldn't"),
+        ("can", "cannot"), ("will", "won't")
+    ]
+    
+    answer_lower = answer.lower()
+    found_contradictions = []
+    
+    for word1, word2 in contradictions:
+        if word1 in answer_lower and word2 in answer_lower:
+            # Check if they're in the same sentence (simplified)
+            found_contradictions.append((word1, word2))
+    
+    passed = len(found_contradictions) == 0
+    score = 1.0 if passed else max(0.3, 1.0 - (len(found_contradictions) * 0.2))
+    
+    if found_contradictions:
+        for w1, w2 in found_contradictions:
+            issues.append(f"Potential contradiction: '{w1}' and '{w2}' both present")
+    
+    return ValidationResult(
+        check_type=ValidationCheck.CONSISTENCY,
+        passed=passed,
+        score=score,
+        issues=issues,
+        suggestions=["Review answer for contradictory statements"] if issues else [],
+        details={"contradictions_found": len(found_contradictions)}
+    )
+
+def check_completeness(query: str, answer: str) -> ValidationResult:
+    """Check if answer fully addresses the question"""
+    query_lower = query.lower()
+    answer_lower = answer.lower()
+    
+    # Extract key question words
+    question_words = ["what", "how", "why", "when", "where", "who", "which"]
+    has_question_word = any(word in query_lower for word in question_words)
+    
+    # Check answer length relative to query complexity
+    query_words = len(query.split())
+    answer_words = len(answer.split())
+    
+    # Simple heuristic: answer should be at least 2x query length for complex questions
+    min_expected = query_words * 2 if query_words > 10 else 20
+    
+    length_adequate = answer_words >= min_expected
+    
+    # Check if answer addresses the question type
+    addresses_question = True
+    issues = []
+    suggestions = []
+    
+    if has_question_word:
+        # For "how" questions, expect steps or explanations
+        if "how" in query_lower:
+            has_steps = any(word in answer_lower for word in ["first", "then", "next", "finally", "step"])
+            if not has_steps and answer_words < 50:
+                addresses_question = False
+                issues.append("'How' question may need more detailed explanation")
+                suggestions.append("Add step-by-step instructions or examples")
+        
+        # For "why" questions, expect reasoning
+        if "why" in query_lower:
+            has_reasoning = any(word in answer_lower for word in ["because", "since", "due to", "reason"])
+            if not has_reasoning:
+                issues.append("'Why' question should include reasoning")
+                suggestions.append("Explain the reasoning behind the answer")
+    
+    if not length_adequate:
+        issues.append(f"Answer may be too brief ({answer_words} words, expected ~{min_expected})")
+        suggestions.append("Provide more detailed explanation or examples")
+    
+    passed = length_adequate and addresses_question
+    score = 0.5 if not length_adequate else (1.0 if addresses_question else 0.7)
+    
+    return ValidationResult(
+        check_type=ValidationCheck.COMPLETENESS,
+        passed=passed,
+        score=score,
+        issues=issues,
+        suggestions=suggestions,
+        details={"query_words": query_words, "answer_words": answer_words}
+    )
+
+def check_relevance(query: str, answer: str) -> ValidationResult:
+    """Check if answer is relevant to the question"""
+    query_words = set(query.lower().split())
+    answer_words = set(answer.lower().split())
+    
+    # Remove common stop words
+    stop_words = {"the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for"}
+    query_words -= stop_words
+    answer_words -= stop_words
+    
+    # Calculate relevance
+    common_words = query_words & answer_words
+    relevance_ratio = len(common_words) / len(query_words) if query_words else 0
+    
+    passed = relevance_ratio > 0.2  # At least 20% of query words in answer
+    score = min(1.0, relevance_ratio * 2)
+    
+    issues = []
+    suggestions = []
+    
+    if not passed:
+        issues.append("Answer may not directly address the question")
+        suggestions.append("Ensure answer stays focused on the specific question asked")
+    
+    return ValidationResult(
+        check_type=ValidationCheck.RELEVANCE,
+        passed=passed,
+        score=score,
+        issues=issues,
+        suggestions=suggestions,
+        details={"relevance_ratio": relevance_ratio, "common_words": len(common_words)}
+    )
+
+def check_clarity(answer: str) -> ValidationResult:
+    """Check answer clarity and readability"""
+    words = answer.split()
+    sentences = answer.count('.') + answer.count('!') + answer.count('?')
+    
+    if sentences == 0:
+        sentences = 1  # Avoid division by zero
+    
+    avg_sentence_length = len(words) / sentences
+    
+    # Check for clarity indicators
+    has_structure = any(word in answer.lower() for word in ["first", "second", "finally", "however", "therefore"])
+    has_formatting = "```" in answer or "\n\n" in answer
+    
+    issues = []
+    suggestions = []
+    
+    # Too long sentences reduce clarity
+    if avg_sentence_length > 30:
+        issues.append(f"Average sentence length is high ({avg_sentence_length:.1f} words)")
+        suggestions.append("Break long sentences into shorter ones for clarity")
+    
+    score = 1.0
+    
+    # Adjust score based on factors
+    if avg_sentence_length > 30:
+        score -= 0.2
+    if not has_structure and len(words) > 100:
+        score -= 0.1
+        issues.append("Long answer could benefit from structure (e.g., numbered steps)")
+    
+    score = max(0.5, score)  # Minimum 0.5
+    passed = score >= 0.7
+    
+    return ValidationResult(
+        check_type=ValidationCheck.CLARITY,
+        passed=passed,
+        score=score,
+        issues=issues,
+        suggestions=suggestions,
+        details={"avg_sentence_length": avg_sentence_length, "has_structure": has_structure}
+    )
+
+def check_code_validity(answer: str) -> Optional[ValidationResult]:
+    """Check if code blocks are properly formatted"""
+    if "```" not in answer:
+        return None  # No code blocks
+    
+    code_blocks = answer.count("```") // 2  # Pairs of ```
+    
+    issues = []
+    suggestions = []
+    
+    # Check for unclosed code blocks
+    if answer.count("```") % 2 != 0:
+        issues.append("Unclosed code block detected")
+        suggestions.append("Ensure all code blocks are properly closed with ```")
+    
+    # Check for syntax in code blocks
+    # Extract code between ```
+    code_parts = answer.split("```")
+    for i in range(1, len(code_parts), 2):
+        code = code_parts[i].strip()
+        if not code:
+            issues.append("Empty code block found")
+    
+    passed = len(issues) == 0
+    score = 1.0 if passed else 0.6
+    
+    return ValidationResult(
+        check_type=ValidationCheck.CODE_VALIDITY,
+        passed=passed,
+        score=score,
+        issues=issues,
+        suggestions=suggestions,
+        details={"code_blocks": code_blocks}
+    )
+
+# Answer Validation API Endpoints
+@app.post("/validation/validate")
+async def validate_answer_endpoint(
+    query_id: str,
+    query: str,
+    answer: str,
+    model: str,
+    context: Optional[str] = None
+):
+    """Validate an answer"""
+    validation = await validate_answer(query_id, query, answer, model, context)
+    return validation
+
+@app.get("/validation/config")
+async def get_validation_config():
+    """Get validation configuration"""
+    return app_state.validation_config
+
+@app.put("/validation/config")
+async def update_validation_config(config: ValidationConfig):
+    """Update validation configuration"""
+    app_state.validation_config = config
+    logger.info("updated_validation_config", enabled=config.enabled)
+    return config
+
+@app.get("/validation/history")
+async def get_validation_history(limit: int = 50):
+    """Get recent validations"""
+    return {"validations": app_state.validations[-limit:]}
+
+@app.get("/validation/stats")
+async def get_validation_stats():
+    """Get validation statistics"""
+    if not app_state.validations:
+        return {
+            "total_validations": 0,
+            "avg_score": 0,
+            "approval_rate": 0,
+            "check_pass_rates": {}
+        }
+    
+    total = len(app_state.validations)
+    avg_score = sum(v.overall_score for v in app_state.validations) / total
+    approved = sum(1 for v in app_state.validations if v.approved)
+    approval_rate = approved / total
+    
+    # Calculate pass rates per check type
+    check_counts = {}
+    check_passes = {}
+    
+    for validation in app_state.validations:
+        for check in validation.checks:
+            check_type = check.check_type.value
+            check_counts[check_type] = check_counts.get(check_type, 0) + 1
+            if check.passed:
+                check_passes[check_type] = check_passes.get(check_type, 0) + 1
+    
+    check_pass_rates = {
+        check_type: (check_passes.get(check_type, 0) / count)
+        for check_type, count in check_counts.items()
+    }
+    
+    return {
+        "total_validations": total,
+        "avg_score": round(avg_score, 3),
+        "approval_rate": round(approval_rate, 3),
+        "check_pass_rates": {k: round(v, 3) for k, v in check_pass_rates.items()}
+    }
 
 # Model Ensemble Management Endpoints
 @app.post("/ensembles", response_model=EnsembleConfig)
