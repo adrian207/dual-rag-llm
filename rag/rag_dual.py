@@ -84,9 +84,20 @@ class AppState:
     translations_cache: Dict[str, TranslatedResponse] = {}  # Cache translations
     audit_logs: List['AuditLog'] = []  # Audit log history
     audit_config: 'AuditConfig' = None  # Will be initialized after class definition
+    encryption_manager: Optional['EncryptionManager'] = None  # Encryption manager
+    field_encryptor: Optional['FieldEncryptor'] = None  # Field encryptor
 
 app_state = AppState()
 app_state.audit_config = AuditConfig()
+
+# Initialize encryption if key is provided
+ENCRYPTION_KEY = os.getenv("ENCRYPTION_MASTER_KEY")
+if ENCRYPTION_KEY:
+    app_state.encryption_manager = EncryptionManager(ENCRYPTION_KEY)
+    app_state.field_encryptor = FieldEncryptor(app_state.encryption_manager)
+    logger.info("encryption_enabled", key_source="environment")
+else:
+    logger.warning("encryption_disabled", reason="no_master_key")
 
 # Configuration
 OLLAMA_API = os.getenv("OLLAMA_API", "http://ollama:11434")
@@ -797,6 +808,84 @@ class AuditLogStats(BaseModel):
     avg_request_duration_ms: float
     error_rate: float
     date_range: Dict[str, str]
+
+# Encryption Models
+class EncryptionStatus(BaseModel):
+    """Encryption system status"""
+    enabled: bool
+    algorithm: str
+    key_age_days: int
+    encryption_count: int
+    decryption_count: int
+    key_hash: str
+
+class EncryptDataRequest(BaseModel):
+    """Request to encrypt data"""
+    data: str
+    context: Optional[str] = None
+
+class EncryptDataResponse(BaseModel):
+    """Encrypted data response"""
+    encrypted_data: str
+    algorithm: str
+    timestamp: datetime
+
+class DecryptDataRequest(BaseModel):
+    """Request to decrypt data"""
+    encrypted_data: str
+
+class DecryptDataResponse(BaseModel):
+    """Decrypted data response"""
+    data: str
+    timestamp: datetime
+
+class EncryptFieldsRequest(BaseModel):
+    """Request to encrypt specific fields"""
+    data: Dict[str, Any]
+    fields_to_encrypt: List[str]
+
+class KeyRotationRequest(BaseModel):
+    """Request to rotate encryption key"""
+    new_key: Optional[str] = None  # If None, generates new key
+    
+class KeyRotationResponse(BaseModel):
+    """Key rotation response"""
+    success: bool
+    new_key_hash: str
+    rotated_at: datetime
+    message: str
+
+class TLSConfig(BaseModel):
+    """TLS/HTTPS configuration"""
+    enabled: bool = False
+    cert_path: Optional[str] = None
+    key_path: Optional[str] = None
+    require_client_cert: bool = False
+    ca_cert_path: Optional[str] = None
+    min_tls_version: str = "TLSv1.2"
+    cipher_suites: List[str] = [
+        "TLS_AES_256_GCM_SHA384",
+        "TLS_CHACHA20_POLY1305_SHA256",
+        "TLS_AES_128_GCM_SHA256"
+    ]
+
+class EncryptionConfig(BaseModel):
+    """Complete encryption configuration"""
+    data_at_rest_enabled: bool = True
+    data_in_transit_enabled: bool = True
+    encrypt_audit_logs: bool = False
+    encrypt_cache_data: bool = False
+    encrypt_query_history: bool = True
+    sensitive_fields: List[str] = [
+        "password",
+        "api_key",
+        "secret",
+        "token",
+        "credit_card",
+        "ssn"
+    ]
+    key_rotation_days: int = 90
+    tls_config: TLSConfig = TLSConfig()
 
 class SystemStats(BaseModel):
     """System statistics"""
@@ -4242,6 +4331,236 @@ async def clear_audit_logs(older_than_days: Optional[int] = None):
     return {
         "message": f"Cleared {removed_count} audit logs",
         "remaining": len(app_state.audit_logs)
+    }
+
+# Encryption Management Functions
+def ensure_encryption_enabled():
+    """Ensure encryption is enabled, raise error if not"""
+    if not app_state.encryption_manager:
+        raise HTTPException(
+            status_code=503,
+            detail="Encryption is not enabled. Set ENCRYPTION_MASTER_KEY environment variable."
+        )
+
+def get_encryption_status() -> EncryptionStatus:
+    """Get current encryption system status"""
+    if not app_state.encryption_manager:
+        return EncryptionStatus(
+            enabled=False,
+            algorithm="N/A",
+            key_age_days=0,
+            encryption_count=0,
+            decryption_count=0,
+            key_hash="N/A"
+        )
+    
+    key_info = app_state.encryption_manager.get_key_info()
+    
+    return EncryptionStatus(
+        enabled=True,
+        algorithm=key_info["algorithm"],
+        key_age_days=key_info["age_days"],
+        encryption_count=key_info["encryption_count"],
+        decryption_count=key_info["decryption_count"],
+        key_hash=key_info["key_hash"]
+    )
+
+# Encryption API Endpoints
+@app.get("/encryption/status")
+async def get_encryption_status_endpoint():
+    """Get encryption system status"""
+    status = get_encryption_status()
+    
+    log_audit_event(
+        AuditEventType.API_REQUEST,
+        severity=AuditSeverity.INFO,
+        endpoint="/encryption/status",
+        method="GET"
+    )
+    
+    return status
+
+@app.post("/encryption/encrypt", response_model=EncryptDataResponse)
+async def encrypt_data(request: EncryptDataRequest):
+    """Encrypt data using the system encryption key"""
+    ensure_encryption_enabled()
+    
+    try:
+        encrypted = app_state.encryption_manager.encrypt(request.data)
+        
+        log_audit_event(
+            AuditEventType.DATA_EXPORT,
+            severity=AuditSeverity.INFO,
+            endpoint="/encryption/encrypt",
+            method="POST",
+            metadata={"context": request.context, "data_length": len(request.data)}
+        )
+        
+        return EncryptDataResponse(
+            encrypted_data=encrypted,
+            algorithm="AES-256 (Fernet)",
+            timestamp=datetime.utcnow()
+        )
+    except Exception as e:
+        logger.error("encryption_failed", error=str(e))
+        raise HTTPException(500, f"Encryption failed: {str(e)}")
+
+@app.post("/encryption/decrypt", response_model=DecryptDataResponse)
+async def decrypt_data(request: DecryptDataRequest):
+    """Decrypt data using the system encryption key"""
+    ensure_encryption_enabled()
+    
+    try:
+        decrypted = app_state.encryption_manager.decrypt(request.encrypted_data)
+        
+        log_audit_event(
+            AuditEventType.DATA_IMPORT,
+            severity=AuditSeverity.INFO,
+            endpoint="/encryption/decrypt",
+            method="POST",
+            metadata={"encrypted_length": len(request.encrypted_data)}
+        )
+        
+        return DecryptDataResponse(
+            data=decrypted,
+            timestamp=datetime.utcnow()
+        )
+    except Exception as e:
+        logger.error("decryption_failed", error=str(e))
+        raise HTTPException(400, f"Decryption failed: {str(e)}")
+
+@app.post("/encryption/encrypt-fields")
+async def encrypt_fields(request: EncryptFieldsRequest):
+    """Encrypt specific fields in a data dictionary"""
+    ensure_encryption_enabled()
+    
+    try:
+        encrypted_data = app_state.encryption_manager.encrypt_dict(
+            request.data,
+            request.fields_to_encrypt
+        )
+        
+        log_audit_event(
+            AuditEventType.DATA_EXPORT,
+            severity=AuditSeverity.INFO,
+            endpoint="/encryption/encrypt-fields",
+            method="POST",
+            metadata={
+                "fields_encrypted": request.fields_to_encrypt,
+                "field_count": len(request.fields_to_encrypt)
+            }
+        )
+        
+        return {
+            "encrypted_data": encrypted_data,
+            "fields_encrypted": request.fields_to_encrypt,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error("field_encryption_failed", error=str(e))
+        raise HTTPException(500, f"Field encryption failed: {str(e)}")
+
+@app.post("/encryption/decrypt-fields")
+async def decrypt_fields(data: Dict[str, Any]):
+    """Decrypt encrypted fields in a data dictionary"""
+    ensure_encryption_enabled()
+    
+    try:
+        decrypted_data = app_state.encryption_manager.decrypt_dict(data)
+        
+        encrypted_fields = [k for k in data.keys() if k.startswith("encrypted_")]
+        
+        log_audit_event(
+            AuditEventType.DATA_IMPORT,
+            severity=AuditSeverity.INFO,
+            endpoint="/encryption/decrypt-fields",
+            method="POST",
+            metadata={
+                "fields_decrypted": encrypted_fields,
+                "field_count": len(encrypted_fields)
+            }
+        )
+        
+        return {
+            "decrypted_data": decrypted_data,
+            "fields_decrypted": encrypted_fields,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error("field_decryption_failed", error=str(e))
+        raise HTTPException(400, f"Field decryption failed: {str(e)}")
+
+@app.post("/encryption/rotate-key", response_model=KeyRotationResponse)
+async def rotate_encryption_key(request: KeyRotationRequest):
+    """
+    Rotate the encryption key.
+    WARNING: This will invalidate all previously encrypted data unless re-encrypted.
+    """
+    ensure_encryption_enabled()
+    
+    try:
+        new_key = request.new_key.encode() if request.new_key else None
+        rotated_key = app_state.encryption_manager.rotate_key(new_key)
+        
+        log_audit_event(
+            AuditEventType.CONFIG_CHANGED,
+            severity=AuditSeverity.WARNING,
+            endpoint="/encryption/rotate-key",
+            method="POST",
+            metadata={"action": "key_rotation"}
+        )
+        
+        return KeyRotationResponse(
+            success=True,
+            new_key_hash=hashlib.sha256(rotated_key).hexdigest()[:16],
+            rotated_at=datetime.utcnow(),
+            message="Key rotated successfully. Previously encrypted data will need to be re-encrypted."
+        )
+    except Exception as e:
+        logger.error("key_rotation_failed", error=str(e))
+        raise HTTPException(500, f"Key rotation failed: {str(e)}")
+
+@app.get("/encryption/key-info")
+async def get_key_info():
+    """Get information about the current encryption key"""
+    ensure_encryption_enabled()
+    
+    key_info = app_state.encryption_manager.get_key_info()
+    
+    # Check if key rotation is needed
+    needs_rotation = key_info["age_days"] >= 90
+    
+    return {
+        **key_info,
+        "needs_rotation": needs_rotation,
+        "rotation_threshold_days": 90,
+        "days_until_rotation": max(0, 90 - key_info["age_days"])
+    }
+
+@app.post("/encryption/generate-key")
+async def generate_new_key():
+    """
+    Generate a new encryption key.
+    Returns the key - store it securely!
+    """
+    from encryption import EncryptionManager
+    
+    new_key = EncryptionManager.generate_key()
+    
+    log_audit_event(
+        AuditEventType.CONFIG_CHANGED,
+        severity=AuditSeverity.INFO,
+        endpoint="/encryption/generate-key",
+        method="POST",
+        metadata={"action": "key_generation"}
+    )
+    
+    return {
+        "key": new_key.decode(),
+        "key_hash": hashlib.sha256(new_key).hexdigest()[:16],
+        "algorithm": "AES-256 (Fernet)",
+        "generated_at": datetime.utcnow().isoformat(),
+        "warning": "Store this key securely! It cannot be recovered if lost."
     }
 
 # Model Ensemble Management Endpoints
