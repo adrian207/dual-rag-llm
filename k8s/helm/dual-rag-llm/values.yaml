@@ -251,4 +251,103 @@ initContainers:
   - name: wait-for-redis
     image: busybox:1.35
     command: ['sh', '-c', 'until nc -z -v -w30 dual-rag-llm-redis-master 6379; do echo "Waiting for redis..."; sleep 5; done;']
+  - name: wait-for-postgres
+    image: busybox:1.35
+    command: ['sh', '-c', 'until nc -z -v -w30 dual-rag-llm-postgresql 5432; do echo "Waiting for postgres..."; sleep 5; done;']
+
+# PostgreSQL configuration (vector database backend)
+postgresql:
+  enabled: true
+  auth:
+    username: dualrag
+    password: changeme
+    database: dual_rag
+  primary:
+    persistence:
+      enabled: true
+      size: 50Gi
+    resources:
+      limits:
+        cpu: 2000m
+        memory: 4Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+    initdb:
+      scripts:
+        init.sql: |
+          -- Enable pgvector extension
+          CREATE EXTENSION IF NOT EXISTS vector;
+          
+          -- Grant necessary permissions
+          GRANT ALL PRIVILEGES ON DATABASE dual_rag TO dualrag;
+  
+  # Performance tuning
+  primary:
+    extendedConfiguration: |
+      max_connections = 200
+      shared_buffers = 1GB
+      effective_cache_size = 3GB
+      maintenance_work_mem = 256MB
+      checkpoint_completion_target = 0.9
+      wal_buffers = 16MB
+      default_statistics_target = 100
+      random_page_cost = 1.1
+      effective_io_concurrency = 200
+      work_mem = 5242kB
+      min_wal_size = 1GB
+      max_wal_size = 4GB
+
+# Backup configuration
+backup:
+  enabled: true
+  schedule: "0 */6 * * *"  # Every 6 hours
+  backupDir: /backups
+  retentionDays: 30
+  maxBackups: 100
+  storage: 100Gi
+  storageClass: ""
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+  
+  # S3 backup configuration (optional)
+  s3:
+    enabled: false
+    bucket: ""
+    region: us-east-1
+    accessKeyId: ""
+    secretAccessKey: ""
+
+# Restore configuration
+restore:
+  enabled: false
+  backupId: ""  # Set to specific backup ID to restore
+  backoffLimit: 3
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+
+# Disaster Recovery configuration
+disasterRecovery:
+  enabled: true
+  autoBackupEnabled: true
+  backupIntervalHours: 6
+  healthCheckIntervalSeconds: 60
+  failoverMode: automatic  # automatic or manual
+  maxRecoveryAttempts: 3
+  recoveryTimeoutSeconds: 600
+  rpoMinutes: 60  # Recovery Point Objective
+  rtoMinutes: 15  # Recovery Time Objective
+  alertWebhooks: []
 

@@ -12,8 +12,129 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- PowerShell deployment scripts for Azure
-- Complete Azure automation toolkit
+- Placeholder for future features
+
+---
+
+## [1.20.0] - 2024-10-31
+
+### 🗄️ Operations & Resilience - Database Backend, Backup & Disaster Recovery
+
+**Major Features:**
+- **PostgreSQL Vector Database**: Scalable vector storage with pgvector extension
+- **Automated Backup System**: Kubernetes CronJob for scheduled backups (6-hourly)
+- **Disaster Recovery Automation**: Automated DR procedures with health monitoring
+- **Comprehensive DR Scripts**: Bash scripts for backup, restore, and DR operations
+- **Point-in-Time Recovery**: Transaction log-based recovery capabilities
+- **Backup Verification**: SHA-256 checksums and integrity validation
+- **Backup Retention Policies**: 30-day retention with configurable limits
+
+**Database Backend (`rag/database.py`):**
+- PostgreSQL integration with asyncpg driver
+- pgvector extension for native vector operations
+- Vector similarity search with cosine distance
+- IVFFLAT indexing for fast queries
+- Connection pooling (5-20 connections)
+- Health checks and monitoring
+- Collection management and statistics
+- Document CRUD operations
+
+**Backup System (`rag/backup.py`):**
+- Automated backup scheduling
+- Full and incremental backup support
+- Compression with gzip
+- SHA-256 checksum verification
+- Backup metadata tracking
+- Automatic cleanup per retention policy
+- pg_dump/psql integration
+- S3 upload support (placeholder)
+
+**Disaster Recovery (`rag/disaster_recovery.py`):**
+- Continuous health monitoring (60-second intervals)
+- Automated recovery procedures
+- Manual and automatic failover modes
+- Incident tracking and logging
+- RPO: 60 minutes, RTO: 15 minutes
+- Alert webhook integration
+- Recovery action orchestration
+
+**Kubernetes Integration:**
+- `templates/backup-cronjob.yaml` - Automated backup CronJob
+- `templates/restore-job.yaml` - On-demand restore Job
+- `templates/backup-pvc.yaml` - 100GB backup storage PVC
+- PostgreSQL Helm chart dependency (Bitnami 12.5.8)
+- Comprehensive values.yaml configuration
+
+**DR Scripts:**
+- `scripts/backup.sh` - Manual backup creation
+- `scripts/restore.sh` - Interactive restore with verification
+- `scripts/disaster-recovery.sh` - Complete DR management menu
+
+**Documentation:**
+- `docs/DISASTER_RECOVERY.md` - 500+ line comprehensive DR guide
+- Disaster scenarios and recovery procedures
+- DR testing plans and maintenance schedules
+- Emergency contact information
+- Troubleshooting guides
+
+**Configuration:**
+```yaml
+postgresql:
+  enabled: true
+  auth:
+    database: dual_rag
+  persistence:
+    size: 50Gi
+  resources:
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+backup:
+  enabled: true
+  schedule: "0 */6 * * *"
+  retentionDays: 30
+  maxBackups: 100
+  storage: 100Gi
+
+disasterRecovery:
+  enabled: true
+  failoverMode: automatic
+  rpoMinutes: 60
+  rtoMinutes: 15
+```
+
+**Use Cases:**
+- Enterprise production deployments
+- Data durability and compliance
+- Business continuity planning
+- Disaster recovery testing
+- Point-in-time data restoration
+- Automated failover and recovery
+
+**Dependencies:**
+- `asyncpg==0.29.0` - PostgreSQL async driver
+- PostgreSQL 15+ with pgvector extension
+- Kubernetes 1.24+
+- Bitnami PostgreSQL Helm chart
+
+**Files Added:**
+- `rag/database.py` (449 lines)
+- `rag/backup.py` (570 lines)
+- `rag/disaster_recovery.py` (486 lines)
+- `k8s/helm/dual-rag-llm/templates/backup-cronjob.yaml`
+- `k8s/helm/dual-rag-llm/templates/restore-job.yaml`
+- `k8s/helm/dual-rag-llm/templates/backup-pvc.yaml`
+- `scripts/backup.sh` (97 lines)
+- `scripts/restore.sh` (146 lines)
+- `scripts/disaster-recovery.sh` (238 lines)
+- `docs/DISASTER_RECOVERY.md` (691 lines)
+
+**Migration Notes:**
+- Existing ChromaDB data will need to be migrated to PostgreSQL
+- Backup PVC requires ReadWriteMany access mode
+- PostgreSQL credentials stored in Kubernetes secrets
+- Helm chart dependency update required: `helm dependency update`
 
 ---
 

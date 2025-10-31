@@ -1,0 +1,19 @@
+{{- if .Values.backup.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "dual-rag-llm.fullname" . }}-backup-pvc
+  labels:
+    {{- include "dual-rag-llm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  accessModes:
+    - ReadWriteMany
+  {{- if .Values.backup.storageClass }}
+  storageClassName: {{ .Values.backup.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backup.storage }}
+{{- end }}
+
