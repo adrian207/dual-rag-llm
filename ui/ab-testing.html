@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A/B Testing - Dual RAG LLM</title>
+    <link rel="stylesheet" href="/ui/styles.css">
+    <link rel="stylesheet" href="/ui/ab-testing.css">
+</head>
+<body>
+    <div class="container ab-test-layout">
+        <header>
+            <h1>🧪 A/B Testing Dashboard</h1>
+            <nav>
+                <a href="/ui">← Back to Chat</a>
+                <button id="refreshTests" class="btn-primary">🔄 Refresh</button>
+            </nav>
+        </header>
+
+        <div class="content">
+            <!-- Create Test Panel -->
+            <div class="panel create-test-panel">
+                <h2>Create New Test</h2>
+                <form id="createTestForm">
+                    <div class="form-group">
+                        <label for="testName">Test Name *</label>
+                        <input type="text" id="testName" required placeholder="e.g., Qwen vs DeepSeek Performance">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="testDescription">Description</label>
+                        <textarea id="testDescription" placeholder="What are you testing?"></textarea>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="modelA">Model A *</label>
+                            <select id="modelA" required>
+                                <option value="">Select Model</option>
+                                <option value="qwen2.5-coder:32b-q4_K_M">Qwen 2.5 Coder 32B</option>
+                                <option value="qwen2.5-coder:14b">Qwen 2.5 Coder 14B</option>
+                                <option value="qwen2.5-coder:7b">Qwen 2.5 Coder 7B</option>
+                                <option value="deepseek-coder-v2:33b-q4_K_M">DeepSeek Coder V2 33B</option>
+                                <option value="deepseek-coder-v2:16b">DeepSeek Coder V2 16B</option>
+                                <option value="codellama:34b">CodeLlama 34B</option>
+                                <option value="codellama:13b">CodeLlama 13B</option>
+                                <option value="llama3.1:70b">Llama 3.1 70B</option>
+                                <option value="llama3.1:8b">Llama 3.1 8B</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="modelB">Model B *</label>
+                            <select id="modelB" required>
+                                <option value="">Select Model</option>
+                                <option value="qwen2.5-coder:32b-q4_K_M">Qwen 2.5 Coder 32B</option>
+                                <option value="qwen2.5-coder:14b">Qwen 2.5 Coder 14B</option>
+                                <option value="qwen2.5-coder:7b">Qwen 2.5 Coder 7B</option>
+                                <option value="deepseek-coder-v2:33b-q4_K_M">DeepSeek Coder V2 33B</option>
+                                <option value="deepseek-coder-v2:16b">DeepSeek Coder V2 16B</option>
+                                <option value="codellama:34b">CodeLlama 34B</option>
+                                <option value="codellama:13b">CodeLlama 13B</option>
+                                <option value="llama3.1:70b">Llama 3.1 70B</option>
+                                <option value="llama3.1:8b">Llama 3.1 8B</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="trafficSplit">Traffic Split (% to Model A)</label>
+                            <input type="range" id="trafficSplit" min="0" max="100" value="50" step="5">
+                            <span id="trafficSplitValue">50%</span>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="minSamples">Minimum Samples</label>
+                            <input type="number" id="minSamples" value="30" min="10" max="1000">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="confidenceLevel">Confidence Level</label>
+                            <select id="confidenceLevel">
+                                <option value="0.90">90%</option>
+                                <option value="0.95" selected>95%</option>
+                                <option value="0.99">99%</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn-primary">Create Test</button>
+                </form>
+            </div>
+
+            <!-- Active Tests List -->
+            <div class="panel tests-list-panel">
+                <h2>Active Tests</h2>
+                <div id="testsList"></div>
+            </div>
+
+            <!-- Test Details Panel -->
+            <div id="testDetailsPanel" class="panel test-details-panel" style="display: none;">
+                <div class="panel-header">
+                    <h2>Test Details</h2>
+                    <button id="closeDetails" class="btn-secondary">✕</button>
+                </div>
+                <div id="testDetailsContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/ui/ab-testing.js"></script>
+</body>
+</html>
+

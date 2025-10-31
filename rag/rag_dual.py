@@ -14,9 +14,13 @@ import os
 import asyncio
 import hashlib
 import json
-from typing import Optional, Dict, Any, List
+import random
+import math
+import time
+from typing import Optional, Dict, Any, List, Literal
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+from enum import Enum
 
 import structlog
 import httpx
@@ -57,6 +61,8 @@ class AppState:
     cache_stats: Dict[str, int] = {"hits": 0, "misses": 0, "errors": 0}
     tool_usage: Dict[str, int] = {"web_search": 0, "github": 0, "rag": 0}
     model_performance: Dict[str, Dict[str, Any]] = {}  # Track performance per model
+    ab_tests: Dict[str, ABTestConfig] = {}  # Active A/B tests
+    ab_results: Dict[str, List[ABTestResult]] = {}  # Test results
 
 app_state = AppState()
 
@@ -85,6 +91,8 @@ class Query(BaseModel):
     github_repo: Optional[str] = Field(default=None)
     model_override: Optional[str] = Field(default=None, description="Override automatic model selection")
     compare_models: bool = Field(default=False, description="Compare responses from multiple models")
+    ab_test_id: Optional[str] = Field(default=None, description="Participate in A/B test")
+    query_id: Optional[str] = Field(default=None, description="Unique query ID for tracking")
 
 class ToolResult(BaseModel):
     """Result from a tool (web search or GitHub)"""
@@ -126,6 +134,54 @@ class ModelPerformance(BaseModel):
     total_tokens: int
     avg_tokens_per_sec: float
     avg_response_time: float
+
+class TestStatus(str, Enum):
+    """A/B test status"""
+    DRAFT = "draft"
+    RUNNING = "running"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+class ABTestConfig(BaseModel):
+    """A/B test configuration"""
+    test_id: str
+    name: str
+    description: str
+    model_a: str
+    model_b: str
+    traffic_split: float = Field(default=0.5, ge=0.0, le=1.0)  # % to model_a
+    status: TestStatus = TestStatus.DRAFT
+    created_at: str
+    started_at: Optional[str] = None
+    ended_at: Optional[str] = None
+    min_samples: int = Field(default=30, ge=10)
+    confidence_level: float = Field(default=0.95, ge=0.8, le=0.99)
+    metrics: List[str] = ["response_time", "tokens_per_sec", "user_rating"]
+
+class ABTestResult(BaseModel):
+    """A/B test result for a single query"""
+    test_id: str
+    query_id: str
+    model: str
+    question: str
+    response_time: float
+    tokens: int
+    tokens_per_sec: float
+    user_rating: Optional[int] = None  # 1-5 stars
+    timestamp: str
+
+class ABTestStatistics(BaseModel):
+    """Statistical analysis of A/B test"""
+    test_id: str
+    model_a_stats: Dict[str, Any]
+    model_b_stats: Dict[str, Any]
+    statistical_significance: Dict[str, bool]
+    confidence_intervals: Dict[str, Dict[str, float]]
+    winner: Optional[str] = None
+    winner_metric: Optional[str] = None
+    sample_sizes: Dict[str, int]
+    recommendation: str
 
 class SystemStats(BaseModel):
     """System statistics"""
@@ -511,6 +567,206 @@ async def get_stats():
         model_performance=model_perf_objects
     )
 
+# A/B Testing Functions
+def select_model_for_test(test: ABTestConfig) -> str:
+    """Select model based on traffic split"""
+    return test.model_a if random.random() < test.traffic_split else test.model_b
+
+async def record_ab_test_result(result: ABTestResult):
+    """Record A/B test result"""
+    test_id = result.test_id
+    
+    if test_id not in app_state.ab_results:
+        app_state.ab_results[test_id] = []
+    
+    app_state.ab_results[test_id].append(result)
+    
+    # Store in Redis for persistence
+    if app_state.redis_client:
+        try:
+            key = f"ab_test_result:{test_id}:{result.query_id}"
+            await app_state.redis_client.setex(
+                key,
+                86400 * 30,  # 30 days
+                json.dumps(result.dict())
+            )
+        except Exception as e:
+            logger.error("failed_to_store_ab_result", error=str(e))
+
+def calculate_statistics(results: List[ABTestResult], model: str) -> Dict[str, Any]:
+    """Calculate statistics for a model's results"""
+    model_results = [r for r in results if r.model == model]
+    
+    if not model_results:
+        return {
+            "count": 0,
+            "response_time": {"mean": 0, "std": 0},
+            "tokens_per_sec": {"mean": 0, "std": 0},
+            "user_rating": {"mean": 0, "std": 0, "count": 0}
+        }
+    
+    response_times = [r.response_time for r in model_results]
+    tokens_per_sec = [r.tokens_per_sec for r in model_results]
+    user_ratings = [r.user_rating for r in model_results if r.user_rating is not None]
+    
+    return {
+        "count": len(model_results),
+        "response_time": {
+            "mean": sum(response_times) / len(response_times),
+            "std": math.sqrt(sum((x - sum(response_times) / len(response_times)) ** 2 for x in response_times) / len(response_times)) if len(response_times) > 1 else 0
+        },
+        "tokens_per_sec": {
+            "mean": sum(tokens_per_sec) / len(tokens_per_sec),
+            "std": math.sqrt(sum((x - sum(tokens_per_sec) / len(tokens_per_sec)) ** 2 for x in tokens_per_sec) / len(tokens_per_sec)) if len(tokens_per_sec) > 1 else 0
+        },
+        "user_rating": {
+            "mean": sum(user_ratings) / len(user_ratings) if user_ratings else 0,
+            "std": math.sqrt(sum((x - sum(user_ratings) / len(user_ratings)) ** 2 for x in user_ratings) / len(user_ratings)) if len(user_ratings) > 1 else 0,
+            "count": len(user_ratings)
+        }
+    }
+
+def calculate_confidence_interval(data: List[float], confidence_level: float = 0.95) -> Dict[str, float]:
+    """Calculate confidence interval using t-distribution"""
+    if len(data) < 2:
+        return {"lower": 0, "upper": 0, "margin": 0}
+    
+    n = len(data)
+    mean = sum(data) / n
+    std = math.sqrt(sum((x - mean) ** 2 for x in data) / (n - 1))
+    
+    # t-value approximation for 95% confidence
+    t_value = 1.96 if n > 30 else 2.262  # Simplified
+    margin = t_value * (std / math.sqrt(n))
+    
+    return {
+        "lower": mean - margin,
+        "upper": mean + margin,
+        "margin": margin
+    }
+
+def test_statistical_significance(data_a: List[float], data_b: List[float], confidence_level: float = 0.95) -> bool:
+    """Two-sample t-test for statistical significance"""
+    if len(data_a) < 2 or len(data_b) < 2:
+        return False
+    
+    n_a, n_b = len(data_a), len(data_b)
+    mean_a = sum(data_a) / n_a
+    mean_b = sum(data_b) / n_b
+    
+    var_a = sum((x - mean_a) ** 2 for x in data_a) / (n_a - 1)
+    var_b = sum((x - mean_b) ** 2 for x in data_b) / (n_b - 1)
+    
+    # Welch's t-test
+    t_stat = abs(mean_a - mean_b) / math.sqrt(var_a / n_a + var_b / n_b)
+    
+    # Critical value for 95% confidence (simplified)
+    t_critical = 1.96
+    
+    return t_stat > t_critical
+
+async def analyze_ab_test(test_id: str) -> ABTestStatistics:
+    """Perform statistical analysis of A/B test"""
+    if test_id not in app_state.ab_tests:
+        raise HTTPException(status_code=404, detail="Test not found")
+    
+    test = app_state.ab_tests[test_id]
+    results = app_state.ab_results.get(test_id, [])
+    
+    if not results:
+        raise HTTPException(status_code=400, detail="No results yet")
+    
+    # Calculate statistics for each model
+    stats_a = calculate_statistics(results, test.model_a)
+    stats_b = calculate_statistics(results, test.model_b)
+    
+    # Extract data for significance testing
+    results_a = [r for r in results if r.model == test.model_a]
+    results_b = [r for r in results if r.model == test.model_b]
+    
+    response_times_a = [r.response_time for r in results_a]
+    response_times_b = [r.response_time for r in results_b]
+    
+    tokens_per_sec_a = [r.tokens_per_sec for r in results_a]
+    tokens_per_sec_b = [r.tokens_per_sec for r in results_b]
+    
+    ratings_a = [r.user_rating for r in results_a if r.user_rating is not None]
+    ratings_b = [r.user_rating for r in results_b if r.user_rating is not None]
+    
+    # Test statistical significance
+    significance = {
+        "response_time": test_statistical_significance(response_times_a, response_times_b, test.confidence_level),
+        "tokens_per_sec": test_statistical_significance(tokens_per_sec_a, tokens_per_sec_b, test.confidence_level),
+        "user_rating": test_statistical_significance(ratings_a, ratings_b, test.confidence_level) if ratings_a and ratings_b else False
+    }
+    
+    # Calculate confidence intervals
+    confidence_intervals = {
+        "response_time_a": calculate_confidence_interval(response_times_a, test.confidence_level),
+        "response_time_b": calculate_confidence_interval(response_times_b, test.confidence_level),
+        "tokens_per_sec_a": calculate_confidence_interval(tokens_per_sec_a, test.confidence_level),
+        "tokens_per_sec_b": calculate_confidence_interval(tokens_per_sec_b, test.confidence_level)
+    }
+    
+    # Determine winner
+    winner = None
+    winner_metric = None
+    recommendation = "Continue test - insufficient data or no clear winner"
+    
+    min_samples = test.min_samples
+    if stats_a["count"] >= min_samples and stats_b["count"] >= min_samples:
+        # Check for winner based on multiple metrics
+        a_wins = 0
+        b_wins = 0
+        
+        # Response time (lower is better)
+        if significance["response_time"]:
+            if stats_a["response_time"]["mean"] < stats_b["response_time"]["mean"]:
+                a_wins += 1
+            else:
+                b_wins += 1
+        
+        # Tokens per second (higher is better)
+        if significance["tokens_per_sec"]:
+            if stats_a["tokens_per_sec"]["mean"] > stats_b["tokens_per_sec"]["mean"]:
+                a_wins += 1
+            else:
+                b_wins += 1
+        
+        # User rating (higher is better)
+        if significance["user_rating"]:
+            if stats_a["user_rating"]["mean"] > stats_b["user_rating"]["mean"]:
+                a_wins += 1
+                winner_metric = "user_rating"
+            else:
+                b_wins += 1
+                winner_metric = "user_rating"
+        
+        if a_wins > b_wins:
+            winner = test.model_a
+            recommendation = f"✅ Clear winner: {test.model_a} performs better on {a_wins} out of {a_wins + b_wins} significant metrics"
+        elif b_wins > a_wins:
+            winner = test.model_b
+            recommendation = f"✅ Clear winner: {test.model_b} performs better on {b_wins} out of {a_wins + b_wins} significant metrics"
+        elif a_wins == b_wins and a_wins > 0:
+            recommendation = f"⚖️ Tie: Both models perform similarly. Consider other factors (cost, latency)"
+    else:
+        needed_a = max(0, min_samples - stats_a["count"])
+        needed_b = max(0, min_samples - stats_b["count"])
+        recommendation = f"⏳ Need {needed_a + needed_b} more samples ({needed_a} for {test.model_a}, {needed_b} for {test.model_b})"
+    
+    return ABTestStatistics(
+        test_id=test_id,
+        model_a_stats=stats_a,
+        model_b_stats=stats_b,
+        statistical_significance=significance,
+        confidence_intervals=confidence_intervals,
+        winner=winner,
+        winner_metric=winner_metric,
+        sample_sizes={test.model_a: stats_a["count"], test.model_b: stats_b["count"]},
+        recommendation=recommendation
+    )
+
 @app.post("/cache/clear")
 async def clear_cache():
     """Clear Redis cache"""
@@ -545,6 +801,166 @@ async def get_available_models():
     except Exception as e:
         logger.error("failed_to_fetch_models", error=str(e))
         return {"available": [], "loaded": list(app_state.models_loaded)}
+
+# A/B Test Management Endpoints
+@app.post("/ab-tests", response_model=ABTestConfig)
+async def create_ab_test(
+    name: str,
+    description: str,
+    model_a: str,
+    model_b: str,
+    traffic_split: float = 0.5,
+    min_samples: int = 30,
+    confidence_level: float = 0.95
+):
+    """Create a new A/B test"""
+    test_id = f"test_{int(time.time())}_{random.randint(1000, 9999)}"
+    
+    test = ABTestConfig(
+        test_id=test_id,
+        name=name,
+        description=description,
+        model_a=model_a,
+        model_b=model_b,
+        traffic_split=traffic_split,
+        status=TestStatus.DRAFT,
+        created_at=datetime.now().isoformat(),
+        min_samples=min_samples,
+        confidence_level=confidence_level
+    )
+    
+    app_state.ab_tests[test_id] = test
+    app_state.ab_results[test_id] = []
+    
+    logger.info("ab_test_created", test_id=test_id, name=name)
+    return test
+
+@app.get("/ab-tests")
+async def list_ab_tests():
+    """List all A/B tests"""
+    return {
+        "tests": list(app_state.ab_tests.values()),
+        "count": len(app_state.ab_tests)
+    }
+
+@app.get("/ab-tests/{test_id}", response_model=ABTestConfig)
+async def get_ab_test(test_id: str):
+    """Get A/B test configuration"""
+    if test_id not in app_state.ab_tests:
+        raise HTTPException(status_code=404, detail="Test not found")
+    return app_state.ab_tests[test_id]
+
+@app.post("/ab-tests/{test_id}/start")
+async def start_ab_test(test_id: str):
+    """Start an A/B test"""
+    if test_id not in app_state.ab_tests:
+        raise HTTPException(status_code=404, detail="Test not found")
+    
+    test = app_state.ab_tests[test_id]
+    if test.status != TestStatus.DRAFT:
+        raise HTTPException(status_code=400, detail="Test must be in DRAFT status")
+    
+    test.status = TestStatus.RUNNING
+    test.started_at = datetime.now().isoformat()
+    
+    logger.info("ab_test_started", test_id=test_id)
+    return {"status": "started", "test": test}
+
+@app.post("/ab-tests/{test_id}/pause")
+async def pause_ab_test(test_id: str):
+    """Pause an A/B test"""
+    if test_id not in app_state.ab_tests:
+        raise HTTPException(status_code=404, detail="Test not found")
+    
+    test = app_state.ab_tests[test_id]
+    if test.status != TestStatus.RUNNING:
+        raise HTTPException(status_code=400, detail="Test must be RUNNING")
+    
+    test.status = TestStatus.PAUSED
+    logger.info("ab_test_paused", test_id=test_id)
+    return {"status": "paused", "test": test}
+
+@app.post("/ab-tests/{test_id}/resume")
+async def resume_ab_test(test_id: str):
+    """Resume a paused A/B test"""
+    if test_id not in app_state.ab_tests:
+        raise HTTPException(status_code=404, detail="Test not found")
+    
+    test = app_state.ab_tests[test_id]
+    if test.status != TestStatus.PAUSED:
+        raise HTTPException(status_code=400, detail="Test must be PAUSED")
+    
+    test.status = TestStatus.RUNNING
+    logger.info("ab_test_resumed", test_id=test_id)
+    return {"status": "resumed", "test": test}
+
+@app.post("/ab-tests/{test_id}/complete")
+async def complete_ab_test(test_id: str):
+    """Complete an A/B test and declare winner"""
+    if test_id not in app_state.ab_tests:
+        raise HTTPException(status_code=404, detail="Test not found")
+    
+    test = app_state.ab_tests[test_id]
+    test.status = TestStatus.COMPLETED
+    test.ended_at = datetime.now().isoformat()
+    
+    # Analyze results
+    try:
+        stats = await analyze_ab_test(test_id)
+    except HTTPException:
+        stats = None
+    
+    logger.info("ab_test_completed", test_id=test_id, winner=stats.winner if stats else None)
+    return {"status": "completed", "test": test, "statistics": stats}
+
+@app.get("/ab-tests/{test_id}/statistics", response_model=ABTestStatistics)
+async def get_ab_test_statistics(test_id: str):
+    """Get statistical analysis of A/B test"""
+    return await analyze_ab_test(test_id)
+
+@app.get("/ab-tests/{test_id}/results")
+async def get_ab_test_results(test_id: str):
+    """Get all results for an A/B test"""
+    if test_id not in app_state.ab_tests:
+        raise HTTPException(status_code=404, detail="Test not found")
+    
+    results = app_state.ab_results.get(test_id, [])
+    return {
+        "test_id": test_id,
+        "results": [r.dict() for r in results],
+        "count": len(results)
+    }
+
+@app.post("/ab-tests/{test_id}/rate")
+async def rate_ab_test_response(test_id: str, query_id: str, rating: int):
+    """Rate a response from A/B test (1-5 stars)"""
+    if test_id not in app_state.ab_tests:
+        raise HTTPException(status_code=404, detail="Test not found")
+    
+    if rating < 1 or rating > 5:
+        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+    
+    results = app_state.ab_results.get(test_id, [])
+    for result in results:
+        if result.query_id == query_id:
+            result.user_rating = rating
+            logger.info("ab_test_rated", test_id=test_id, query_id=query_id, rating=rating)
+            return {"status": "rated", "query_id": query_id, "rating": rating}
+    
+    raise HTTPException(status_code=404, detail="Query not found")
+
+@app.delete("/ab-tests/{test_id}")
+async def delete_ab_test(test_id: str):
+    """Delete an A/B test"""
+    if test_id not in app_state.ab_tests:
+        raise HTTPException(status_code=404, detail="Test not found")
+    
+    del app_state.ab_tests[test_id]
+    if test_id in app_state.ab_results:
+        del app_state.ab_results[test_id]
+    
+    logger.info("ab_test_deleted", test_id=test_id)
+    return {"status": "deleted", "test_id": test_id}
 
 @app.post("/query/compare")
 async def compare_models(q: Query):
@@ -636,8 +1052,30 @@ Please provide a detailed answer based on the context above. Include code exampl
 async def generate_streaming_response(q: Query):
     """Generate streaming response for query"""
     try:
-        # Determine routing (with override support)
-        if q.model_override:
+        # Check for A/B test participation
+        ab_test_model = None
+        participating_in_test = False
+        if q.ab_test_id and q.ab_test_id in app_state.ab_tests:
+            test = app_state.ab_tests[q.ab_test_id]
+            if test.status == TestStatus.RUNNING:
+                ab_test_model = select_model_for_test(test)
+                participating_in_test = True
+                logger.info("ab_test_query", test_id=q.ab_test_id, model=ab_test_model)
+        
+        # Determine routing (with A/B test or override support)
+        if participating_in_test:
+            model_name = ab_test_model
+            # Determine source type based on model name
+            if "qwen" in model_name.lower():
+                source_type = "Microsoft"
+                is_ms = True
+            elif "deepseek" in model_name.lower() or "codellama" in model_name.lower():
+                source_type = "Open Source"
+                is_ms = False
+            else:
+                source_type = "General"
+                is_ms = False
+        elif q.model_override:
             model_name = q.model_override
             # Determine source type based on model name
             if "qwen" in model_name.lower():
@@ -820,6 +1258,26 @@ Please provide a detailed answer based on the context above. Include code exampl
         }
         
         await set_cached_response(cache_key, result)
+        
+        # Record A/B test result if participating
+        if participating_in_test and q.ab_test_id:
+            query_id = q.query_id or f"query_{int(time.time())}_{random.randint(1000, 9999)}"
+            ab_result = ABTestResult(
+                test_id=q.ab_test_id,
+                query_id=query_id,
+                model=model_name,
+                question=q.question,
+                response_time=total_time,
+                tokens=token_count,
+                tokens_per_sec=tokens_per_second,
+                timestamp=datetime.now().isoformat()
+            )
+            await record_ab_test_result(ab_result)
+            result["ab_test"] = {
+                "test_id": q.ab_test_id,
+                "query_id": query_id,
+                "model_selected": model_name
+            }
         
         # Send completion
         yield {

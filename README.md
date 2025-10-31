@@ -45,6 +45,16 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 
 ## Key Features
 
+### 🧪 A/B Testing Framework (v1.4.0)
+- **Systematic Testing**: Compare models with statistical rigor
+- **Traffic Splitting**: Route % of queries to each model (customizable)
+- **Statistical Analysis**: T-tests, confidence intervals, significance testing
+- **Automatic Winner Detection**: Declare winners based on multiple metrics
+- **Performance Tracking**: Response time, tokens/sec, user ratings
+- **Test Management**: Create, start, pause, resume, complete tests
+- **Results Dashboard**: Visualize statistics and track progress
+- **Rating System**: 1-5 star ratings for subjective quality assessment
+
 ### 🔄 Dynamic Model Switching (v1.3.0)
 - **Model Selector**: Choose from 10+ available LLMs (Qwen, DeepSeek, CodeLlama, Llama 3.1)
 - **Model Comparison**: Run parallel queries across multiple models
