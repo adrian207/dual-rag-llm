@@ -82,6 +82,7 @@ Future development plans and enhancement ideas for the dual RAG system.
 - [x] Response formatting improvements ✅ **(v1.10.0 - Completed)**
 - [x] Code syntax highlighting ✅ **(v1.11.0 - Completed)**
 - [x] Multi-language support ✅ **(v1.12.0 - Completed)**
+- [x] Custom React/Vue frontend ✅ **(v1.13.0 - Completed)**
 
 ### Training & Fine-tuning
 - [ ] Custom dataset creation from queries
