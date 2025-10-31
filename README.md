@@ -45,6 +45,16 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 
 ## Key Features
 
+### 🤖 Automatic Model Selection (v1.7.0)
+- **12 Query Types**: Intelligent classification (code gen, debug, explain, review, etc.)
+- **Smart Routing**: Automatically select best model for each query type
+- **Performance Learning**: Adapts based on success rates and user ratings
+- **Confidence Scoring**: Keyword-based classification with confidence levels
+- **Fallback Logic**: Graceful degradation if primary model unavailable
+- **Language Detection**: Auto-detect programming languages
+- **Complexity Estimation**: Route simple/complex queries appropriately
+- **Interactive Dashboard**: Configure routing, monitor performance, test classification
+
 ### 🎯 Model Ensemble Strategies (v1.6.0)
 - **6 Ensemble Strategies**: Voting, Averaging, Cascade, Best-of-N, Specialist, Consensus
 - **Parallel Execution**: Run multiple models simultaneously for speed

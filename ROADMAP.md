@@ -74,7 +74,7 @@ Future development plans and enhancement ideas for the dual RAG system.
 - [x] Model A/B testing framework ✅ **(v1.4.0 - Completed)**
 - [x] Custom model fine-tuning pipeline ✅ **(v1.5.0 - Completed)**
 - [x] Model ensemble strategies ✅ **(v1.6.0 - Completed)**
-- [ ] Automatic model selection based on query type
+- [x] Automatic model selection based on query type ✅ **(v1.7.0 - Completed)**
 
 ### Response Quality
 - [ ] Answer validation and verification
