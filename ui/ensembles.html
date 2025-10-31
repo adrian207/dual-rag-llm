@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Ensembles - Dual RAG LLM</title>
+    <link rel="stylesheet" href="/ui/styles.css">
+    <link rel="stylesheet" href="/ui/ensembles.css">
+</head>
+<body>
+    <div class="container ensembles-layout">
+        <header>
+            <h1>🎯 Model Ensemble Strategies</h1>
+            <nav>
+                <a href="/ui">← Back to Chat</a>
+                <a href="/ui/ab-testing.html">🧪 A/B Testing</a>
+                <a href="/ui/finetuning.html">🔧 Fine-tuning</a>
+                <button id="refreshAll" class="btn-primary">🔄 Refresh</button>
+            </nav>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="ensembles">🎯 My Ensembles</button>
+            <button class="tab-btn" data-tab="create">➕ Create Ensemble</button>
+            <button class="tab-btn" data-tab="strategies">📚 Strategies Guide</button>
+        </div>
+
+        <div class="content">
+            <!-- Ensembles Tab -->
+            <div id="ensembles-tab" class="tab-content active">
+                <div class="panel">
+                    <div class="panel-header">
+                        <h2>🎯 Active Ensembles</h2>
+                        <button onclick="showCreateEnsemble()" class="btn-primary">+ Create New</button>
+                    </div>
+                    <div id="ensemblesList"></div>
+                </div>
+            </div>
+
+            <!-- Create Ensemble Tab -->
+            <div id="create-tab" class="tab-content">
+                <div class="panel">
+                    <h2>➕ Create Model Ensemble</h2>
+                    <p class="description">Combine multiple models to achieve better results than any single model.</p>
+                    
+                    <form id="createEnsembleForm">
+                        <div class="form-group">
+                            <label for="ensembleName">Ensemble Name *</label>
+                            <input type="text" id="ensembleName" required placeholder="e.g., Fast Code Ensemble">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="ensembleDescription">Description</label>
+                            <textarea id="ensembleDescription" placeholder="Describe the purpose..."></textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="strategy">Ensemble Strategy *</label>
+                            <select id="strategy" required>
+                                <option value="">Select strategy...</option>
+                                <option value="voting">🗳️ Voting - Majority or weighted vote</option>
+                                <option value="averaging">📊 Averaging - Weighted combination</option>
+                                <option value="cascade">⚡ Cascade - Fast fallback</option>
+                                <option value="best_of_n">🏆 Best-of-N - Highest confidence</option>
+                                <option value="specialist">🎓 Specialist - Domain routing</option>
+                                <option value="consensus">🤝 Consensus - Agreement required</option>
+                            </select>
+                        </div>
+                        
+                        <div id="strategyDescription" class="strategy-info"></div>
+                        
+                        <div class="form-group">
+                            <label>Select Models * (minimum 2)</label>
+                            <div id="modelCheckboxes" class="checkbox-grid"></div>
+                        </div>
+                        
+                        <div id="weightsSection" class="form-section" style="display:none;">
+                            <h3>Model Weights</h3>
+                            <p class="help-text">Assign weights to each model (higher = more influence)</p>
+                            <div id="modelWeights"></div>
+                        </div>
+                        
+                        <div id="thresholdSection" class="form-section" style="display:none;">
+                            <div class="form-group">
+                                <label for="threshold">Threshold (0.0 - 1.0)</label>
+                                <input type="number" id="threshold" min="0" max="1" step="0.1" value="0.7">
+                                <small class="help-text">Minimum agreement required for consensus</small>
+                            </div>
+                        </div>
+                        
+                        <div id="routingSection" class="form-section" style="display:none;">
+                            <h3>Routing Rules</h3>
+                            <p class="help-text">Route questions to specialist models by type</p>
+                            <div id="routingRules">
+                                <div class="routing-rule">
+                                    <label>Code Questions:</label>
+                                    <select id="routing_code"></select>
+                                </div>
+                                <div class="routing-rule">
+                                    <label>Explanations:</label>
+                                    <select id="routing_explanation"></select>
+                                </div>
+                                <div class="routing-rule">
+                                    <label>Debugging:</label>
+                                    <select id="routing_debugging"></select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="section-title">Advanced Settings</div>
+                        
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="parallel" checked>
+                                    Parallel Execution
+                                </label>
+                                <small class="help-text">Run models simultaneously (faster)</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="timeout">Timeout (seconds)</label>
+                                <input type="number" id="timeout" value="30" min="10" max="120">
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="minResponses">Min Responses</label>
+                                <input type="number" id="minResponses" value="1" min="1" max="10">
+                                <small class="help-text">Minimum successful responses required</small>
+                            </div>
+                        </div>
+                        
+                        <button type="submit" class="btn-primary btn-lg">🚀 Create Ensemble</button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Strategies Guide Tab -->
+            <div id="strategies-tab" class="tab-content">
+                <div class="strategies-guide">
+                    <h2>📚 Ensemble Strategies Guide</h2>
+                    
+                    <div class="strategy-card">
+                        <h3>🗳️ Voting</h3>
+                        <p><strong>How it works:</strong> Multiple models vote on the answer. The most common response (or weighted vote) wins.</p>
+                        <p><strong>Best for:</strong> Classification, multiple choice, binary decisions</p>
+                        <p><strong>Example:</strong> 3 models answer yes/no question. If 2 say "yes" and 1 says "no", final answer is "yes".</p>
+                        <div class="code-example">
+                            <strong>Use case:</strong> "Is this code snippet secure?" → Models vote on yes/no
+                        </div>
+                    </div>
+                    
+                    <div class="strategy-card">
+                        <h3>📊 Averaging</h3>
+                        <p><strong>How it works:</strong> Combines responses using weighted average based on model confidence.</p>
+                        <p><strong>Best for:</strong> Numeric predictions, scores, continuous values</p>
+                        <p><strong>Example:</strong> Selecting response from the most confident model with optional weighting.</p>
+                        <div class="code-example">
+                            <strong>Use case:</strong> Code quality assessment → Average confidence scores
+                        </div>
+                    </div>
+                    
+                    <div class="strategy-card">
+                        <h3>⚡ Cascade</h3>
+                        <p><strong>How it works:</strong> Try fast models first. If confidence is low, fall back to slower, more powerful models.</p>
+                        <p><strong>Best for:</strong> Optimizing speed vs quality tradeoff</p>
+                        <p><strong>Example:</strong> Try Qwen 7B first. If confidence < 50%, use DeepSeek 33B.</p>
+                        <div class="code-example">
+                            <strong>Use case:</strong> Simple queries use fast model, complex ones use powerful model
+                        </div>
+                    </div>
+                    
+                    <div class="strategy-card">
+                        <h3>🏆 Best-of-N</h3>
+                        <p><strong>How it works:</strong> Run all models, select the response with highest confidence score.</p>
+                        <p><strong>Best for:</strong> Maximizing quality when speed isn't critical</p>
+                        <p><strong>Example:</strong> 3 models generate code. Select the one with best confidence metric.</p>
+                        <div class="code-example">
+                            <strong>Use case:</strong> Code generation → Pick most confident implementation
+                        </div>
+                    </div>
+                    
+                    <div class="strategy-card">
+                        <h3>🎓 Specialist</h3>
+                        <p><strong>How it works:</strong> Route different question types to specialized models.</p>
+                        <p><strong>Best for:</strong> Domain-specific tasks with specialized models</p>
+                        <p><strong>Example:</strong> Code questions → CodeLlama, explanations → Llama3, debugging → DeepSeek</p>
+                        <div class="code-example">
+                            <strong>Use case:</strong> Automatic routing based on question type detection
+                        </div>
+                    </div>
+                    
+                    <div class="strategy-card">
+                        <h3>🤝 Consensus</h3>
+                        <p><strong>How it works:</strong> Requires threshold% of models to agree before accepting answer.</p>
+                        <p><strong>Best for:</strong> Critical decisions requiring high confidence</p>
+                        <p><strong>Example:</strong> 4 models, 70% threshold → Need 3 models to agree on answer.</p>
+                        <div class="code-example">
+                            <strong>Use case:</strong> Security audits → Multiple models must agree on vulnerability
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Test Modal -->
+        <div id="testModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>🧪 Test Ensemble</h2>
+                    <button onclick="closeTestModal()" class="btn-close">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="testQuestion">Test Question</label>
+                        <textarea id="testQuestion" placeholder="Enter a question to test the ensemble..."></textarea>
+                    </div>
+                    <button onclick="executeTest()" class="btn-primary btn-lg">🚀 Run Test</button>
+                    
+                    <div id="testResults" style="display:none;">
+                        <h3>Test Results</h3>
+                        <div id="testResultsContent"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Results Modal -->
+        <div id="resultsModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>📊 Ensemble Results</h2>
+                    <button onclick="closeResultsModal()" class="btn-close">✕</button>
+                </div>
+                <div id="resultsContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/ui/ensembles.js"></script>
+</body>
+</html>
+
