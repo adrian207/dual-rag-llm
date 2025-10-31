@@ -1,6 +1,6 @@
 # Dual RAG LLM System
 
-[![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](https://github.com/adrian207/dual-rag-llm/releases)
+[![Version](https://img.shields.io/badge/version-1.13.0-blue.svg)](https://github.com/adrian207/dual-rag-llm/releases)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/docker-20.10+-blue.svg)](https://www.docker.com/)
@@ -64,6 +64,18 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 ```
 
 ## Key Features
+
+### ⚛️ Modern React Frontend (v1.13.0)
+- **React 18 + TypeScript**: Modern, type-safe development
+- **Vite Build System**: Lightning-fast development and optimized production builds
+- **Tailwind CSS**: Beautiful, responsive design with dark mode support
+- **Real-time Streaming**: Token-by-token response display with EventSource API
+- **State Management**: Zustand for efficient global state
+- **React Query**: Smart data fetching with caching
+- **Syntax Highlighting**: Code blocks with 22+ language support
+- **Markdown Rendering**: Rich text formatting with react-markdown
+- **Component Architecture**: Modular, reusable components
+- **Production Ready**: Optimized bundle splitting and lazy loading
 
 ### 🌍 Multi-language Support (v1.12.0)
 - **10 Languages Supported**: English, Spanish, French, German, Japanese, Chinese (Simplified), Portuguese, Russian, Italian, Korean
@@ -314,7 +326,8 @@ docker compose logs -f rag
 
 ### 7. Access Interfaces
 
-- **Interactive UI**: http://localhost
+- **React Frontend** ⚛️: http://localhost:3001 (v1.13.0 - Modern UI)
+- **Interactive UI**: http://localhost:8000/ui (Legacy HTML/JS)
 - **RAG API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
 - **Open-WebUI**: http://localhost:3000 (optional)
@@ -668,16 +681,18 @@ request_timeout = 120.0       # LLM request timeout (seconds)
 
 ## Version History
 
-**Current Version:** 1.12.0 (October 31, 2024)
+**Current Version:** 1.13.0 (October 31, 2024)
 
 See [CHANGELOG.md](CHANGELOG.md) for complete release notes.
 
 **Recent Releases:**
+- **v1.13.0** - Modern React Frontend (React 18 + TypeScript + Vite)
 - **v1.12.0** - Multi-language Support (10 languages)
 - **v1.11.0** - Code Syntax Highlighting (22 languages)
 - **v1.10.0** - Response Formatting (6 styles)
 - **v1.9.0** - Factuality Checking & Hallucination Detection
-- **v1.8.0** - Answer Validation (7 checks)
+
+[View all 13 releases →](CHANGELOG.md)
 
 [View all 12 releases →](CHANGELOG.md)
 
@@ -732,12 +747,13 @@ This project builds upon excellent open-source work:
 
 ## Project Stats
 
-- **12 Major Versions** released
+- **13 Major Versions** released
+- **Modern React Frontend** with TypeScript
 - **22 Programming Languages** supported (syntax highlighting)
 - **10 Human Languages** supported (UI + translation)
 - **90+ API Endpoints** documented
-- **4,000+ Lines** of production code
-- **3,000+ Lines** of documentation
+- **5,000+ Lines** of production code
+- **3,500+ Lines** of documentation
 - **3+ Billion** potential users (language reach)
 
 ## Citation
@@ -749,7 +765,7 @@ If you use this project in your research or production, please cite:
   author = {Johnson, Adrian},
   title = {Dual RAG LLM System: Enterprise RAG with Multi-language Support},
   year = {2024},
-  version = {1.12.0},
+  version = {1.13.0},
   url = {https://github.com/adrian207/dual-rag-llm}
 }
 ```
@@ -757,5 +773,5 @@ If you use this project in your research or production, please cite:
 ---
 
 **Built with ❤️ by Adrian Johnson**  
-**Last Updated:** October 31, 2024 | **Version:** 1.12.0
+**Last Updated:** October 31, 2024 | **Version:** 1.13.0
 
