@@ -75,6 +75,46 @@ curl -sL https://raw.githubusercontent.com/adrian207/dual-rag-llm/azure/deployme
 **Cost**: ~$960/month  
 **Best for**: Production, high availability, scalability
 
+## 💻 PowerShell Deployment Support
+
+**Windows users rejoice!** Complete PowerShell deployment scripts available:
+
+- **Deploy-DualRAG-VM.ps1** - Azure VM deployment
+- **Deploy-DualRAG-AKS.ps1** - AKS cluster deployment
+- **Monitor-DualRAG.ps1** - System monitoring & management
+
+📘 **Complete PowerShell Guide**: [POWERSHELL_DEPLOYMENT.md](./POWERSHELL_DEPLOYMENT.md)
+
+### Quick PowerShell Examples
+
+**VM Deployment:**
+```powershell
+.\azure\scripts\Deploy-DualRAG-VM.ps1 `
+    -ResourceGroupName "rg-dualrag-prod" `
+    -Location "eastus" `
+    -VMName "vm-dualrag-01" `
+    -AdminUsername "azureuser"
+```
+
+**AKS Deployment:**
+```powershell
+.\azure\scripts\Deploy-DualRAG-AKS.ps1 `
+    -ResourceGroupName "rg-dualrag-prod" `
+    -ClusterName "aks-dualrag" `
+    -EnableAutoScaling
+```
+
+**Monitoring:**
+```powershell
+.\azure\scripts\Monitor-DualRAG.ps1 `
+    -DeploymentType "AKS" `
+    -ResourceGroupName "rg-dualrag-prod" `
+    -ClusterName "aks-dualrag" `
+    -Action "Status"
+```
+
+---
+
 ## Detailed Documentation
 
 ### Deployment Guides
