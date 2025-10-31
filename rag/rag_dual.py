@@ -86,9 +86,12 @@ class AppState:
     audit_config: 'AuditConfig' = None  # Will be initialized after class definition
     encryption_manager: Optional['EncryptionManager'] = None  # Encryption manager
     field_encryptor: Optional['FieldEncryptor'] = None  # Field encryptor
+    usage_metrics: List[UsageMetric] = []  # Usage metrics history
+    analytics_config: 'AnalyticsConfig' = None  # Analytics configuration
 
 app_state = AppState()
 app_state.audit_config = AuditConfig()
+app_state.analytics_config = AnalyticsConfig()
 
 # Initialize encryption if key is provided
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_MASTER_KEY")
@@ -886,6 +889,85 @@ class EncryptionConfig(BaseModel):
     ]
     key_rotation_days: int = 90
     tls_config: TLSConfig = TLSConfig()
+
+# Usage Analytics Models
+class UsageMetric(BaseModel):
+    """Individual usage metric"""
+    timestamp: datetime
+    metric_type: str  # query, api_call, cache, model_switch, etc.
+    value: float
+    metadata: Dict[str, Any] = {}
+
+class QueryAnalytics(BaseModel):
+    """Analytics for query patterns"""
+    total_queries: int
+    avg_response_time_ms: float
+    queries_per_hour: float
+    queries_per_day: float
+    top_query_types: Dict[str, int]
+    peak_hours: List[int]
+    success_rate: float
+
+class ModelAnalytics(BaseModel):
+    """Analytics for model usage"""
+    model_name: str
+    usage_count: int
+    avg_response_time_ms: float
+    success_rate: float
+    total_tokens: int
+    cache_hit_rate: float
+
+class UserAnalytics(BaseModel):
+    """Analytics for user behavior"""
+    total_users: int
+    active_users_today: int
+    active_users_week: int
+    avg_queries_per_user: float
+    returning_user_rate: float
+
+class PerformanceAnalytics(BaseModel):
+    """System performance analytics"""
+    avg_api_latency_ms: float
+    p50_latency_ms: float
+    p95_latency_ms: float
+    p99_latency_ms: float
+    error_rate: float
+    uptime_percentage: float
+
+class TimeSeriesData(BaseModel):
+    """Time series data point"""
+    timestamp: datetime
+    value: float
+    label: str
+
+class AnalyticsPeriod(str, Enum):
+    """Analytics time period"""
+    HOUR = "hour"
+    DAY = "day"
+    WEEK = "week"
+    MONTH = "month"
+    YEAR = "year"
+
+class AnalyticsReport(BaseModel):
+    """Comprehensive analytics report"""
+    period: AnalyticsPeriod
+    generated_at: datetime
+    query_analytics: QueryAnalytics
+    model_analytics: List[ModelAnalytics]
+    performance: PerformanceAnalytics
+    time_series: List[TimeSeriesData]
+    insights: List[str]
+
+class AnalyticsConfig(BaseModel):
+    """Analytics configuration"""
+    enabled: bool = True
+    track_queries: bool = True
+    track_api_calls: bool = True
+    track_model_usage: bool = True
+    track_cache_usage: bool = True
+    track_user_behavior: bool = True
+    retention_days: int = 90
+    aggregation_interval_minutes: int = 60
 
 class SystemStats(BaseModel):
     """System statistics"""
@@ -4561,6 +4643,368 @@ async def generate_new_key():
         "algorithm": "AES-256 (Fernet)",
         "generated_at": datetime.utcnow().isoformat(),
         "warning": "Store this key securely! It cannot be recovered if lost."
+    }
+
+# Usage Analytics Functions
+def track_metric(
+    metric_type: str,
+    value: float,
+    metadata: Optional[Dict] = None
+):
+    """Track a usage metric"""
+    if not app_state.analytics_config.enabled:
+        return
+    
+    metric = UsageMetric(
+        timestamp=datetime.utcnow(),
+        metric_type=metric_type,
+        value=value,
+        metadata=metadata or {}
+    )
+    
+    app_state.usage_metrics.append(metric)
+    
+    # Keep only recent metrics (retention policy)
+    if len(app_state.usage_metrics) > 100000:
+        cutoff_date = datetime.utcnow() - timedelta(days=app_state.analytics_config.retention_days)
+        app_state.usage_metrics = [
+            m for m in app_state.usage_metrics 
+            if m.timestamp > cutoff_date
+        ]
+
+def get_query_analytics(period: AnalyticsPeriod = AnalyticsPeriod.DAY) -> QueryAnalytics:
+    """Get query analytics for a period"""
+    now = datetime.utcnow()
+    period_start = {
+        AnalyticsPeriod.HOUR: now - timedelta(hours=1),
+        AnalyticsPeriod.DAY: now - timedelta(days=1),
+        AnalyticsPeriod.WEEK: now - timedelta(weeks=1),
+        AnalyticsPeriod.MONTH: now - timedelta(days=30),
+        AnalyticsPeriod.YEAR: now - timedelta(days=365),
+    }[period]
+    
+    query_metrics = [
+        m for m in app_state.usage_metrics
+        if m.metric_type == "query" and m.timestamp >= period_start
+    ]
+    
+    if not query_metrics:
+        return QueryAnalytics(
+            total_queries=0,
+            avg_response_time_ms=0.0,
+            queries_per_hour=0.0,
+            queries_per_day=0.0,
+            top_query_types={},
+            peak_hours=[],
+            success_rate=1.0
+        )
+    
+    total_queries = len(query_metrics)
+    hours_in_period = (now - period_start).total_seconds() / 3600
+    
+    response_times = [m.value for m in query_metrics if m.value > 0]
+    avg_response_time = sum(response_times) / len(response_times) if response_times else 0.0
+    
+    # Query types
+    query_types: Dict[str, int] = {}
+    for m in query_metrics:
+        qtype = m.metadata.get("query_type", "unknown")
+        query_types[qtype] = query_types.get(qtype, 0) + 1
+    
+    # Peak hours
+    hour_counts: Dict[int, int] = {}
+    for m in query_metrics:
+        hour = m.timestamp.hour
+        hour_counts[hour] = hour_counts.get(hour, 0) + 1
+    
+    peak_hours = sorted(hour_counts.items(), key=lambda x: x[1], reverse=True)[:3]
+    peak_hours = [h for h, _ in peak_hours]
+    
+    # Success rate
+    successful = len([m for m in query_metrics if m.metadata.get("success", True)])
+    success_rate = successful / total_queries if total_queries > 0 else 1.0
+    
+    return QueryAnalytics(
+        total_queries=total_queries,
+        avg_response_time_ms=round(avg_response_time, 2),
+        queries_per_hour=round(total_queries / hours_in_period, 2),
+        queries_per_day=round((total_queries / hours_in_period) * 24, 2),
+        top_query_types=dict(sorted(query_types.items(), key=lambda x: x[1], reverse=True)[:5]),
+        peak_hours=peak_hours,
+        success_rate=round(success_rate, 4)
+    )
+
+def get_model_analytics(period: AnalyticsPeriod = AnalyticsPeriod.DAY) -> List[ModelAnalytics]:
+    """Get model usage analytics"""
+    now = datetime.utcnow()
+    period_start = {
+        AnalyticsPeriod.HOUR: now - timedelta(hours=1),
+        AnalyticsPeriod.DAY: now - timedelta(days=1),
+        AnalyticsPeriod.WEEK: now - timedelta(weeks=1),
+        AnalyticsPeriod.MONTH: now - timedelta(days=30),
+        AnalyticsPeriod.YEAR: now - timedelta(days=365),
+    }[period]
+    
+    model_metrics = [
+        m for m in app_state.usage_metrics
+        if m.metric_type == "model_usage" and m.timestamp >= period_start
+    ]
+    
+    # Group by model
+    model_data: Dict[str, list] = {}
+    for m in model_metrics:
+        model_name = m.metadata.get("model", "unknown")
+        if model_name not in model_data:
+            model_data[model_name] = []
+        model_data[model_name].append(m)
+    
+    analytics = []
+    for model_name, metrics in model_data.items():
+        response_times = [m.value for m in metrics if m.value > 0]
+        avg_time = sum(response_times) / len(response_times) if response_times else 0.0
+        
+        successful = len([m for m in metrics if m.metadata.get("success", True)])
+        success_rate = successful / len(metrics) if metrics else 1.0
+        
+        total_tokens = sum(m.metadata.get("tokens", 0) for m in metrics)
+        
+        cache_hits = len([m for m in metrics if m.metadata.get("cached", False)])
+        cache_rate = cache_hits / len(metrics) if metrics else 0.0
+        
+        analytics.append(ModelAnalytics(
+            model_name=model_name,
+            usage_count=len(metrics),
+            avg_response_time_ms=round(avg_time, 2),
+            success_rate=round(success_rate, 4),
+            total_tokens=total_tokens,
+            cache_hit_rate=round(cache_rate, 4)
+        ))
+    
+    return sorted(analytics, key=lambda x: x.usage_count, reverse=True)
+
+def get_performance_analytics(period: AnalyticsPeriod = AnalyticsPeriod.DAY) -> PerformanceAnalytics:
+    """Get system performance analytics"""
+    now = datetime.utcnow()
+    period_start = {
+        AnalyticsPeriod.HOUR: now - timedelta(hours=1),
+        AnalyticsPeriod.DAY: now - timedelta(days=1),
+        AnalyticsPeriod.WEEK: now - timedelta(weeks=1),
+        AnalyticsPeriod.MONTH: now - timedelta(days=30),
+        AnalyticsPeriod.YEAR: now - timedelta(days=365),
+    }[period]
+    
+    api_metrics = [
+        m for m in app_state.usage_metrics
+        if m.metric_type in ["api_call", "query"] and m.timestamp >= period_start
+    ]
+    
+    if not api_metrics:
+        return PerformanceAnalytics(
+            avg_api_latency_ms=0.0,
+            p50_latency_ms=0.0,
+            p95_latency_ms=0.0,
+            p99_latency_ms=0.0,
+            error_rate=0.0,
+            uptime_percentage=100.0
+        )
+    
+    latencies = sorted([m.value for m in api_metrics if m.value > 0])
+    
+    def percentile(data, p):
+        if not data:
+            return 0.0
+        k = (len(data) - 1) * p
+        f = int(k)
+        c = f + 1
+        if c >= len(data):
+            return data[-1]
+        return data[f] + (k - f) * (data[c] - data[f])
+    
+    avg_latency = sum(latencies) / len(latencies) if latencies else 0.0
+    p50 = percentile(latencies, 0.50)
+    p95 = percentile(latencies, 0.95)
+    p99 = percentile(latencies, 0.99)
+    
+    errors = len([m for m in api_metrics if not m.metadata.get("success", True)])
+    error_rate = errors / len(api_metrics) if api_metrics else 0.0
+    
+    return PerformanceAnalytics(
+        avg_api_latency_ms=round(avg_latency, 2),
+        p50_latency_ms=round(p50, 2),
+        p95_latency_ms=round(p95, 2),
+        p99_latency_ms=round(p99, 2),
+        error_rate=round(error_rate, 4),
+        uptime_percentage=round((1 - error_rate) * 100, 2)
+    )
+
+def get_time_series_data(
+    metric_type: str,
+    period: AnalyticsPeriod = AnalyticsPeriod.DAY,
+    points: int = 24
+) -> List[TimeSeriesData]:
+    """Get time series data for a metric"""
+    now = datetime.utcnow()
+    period_start = {
+        AnalyticsPeriod.HOUR: now - timedelta(hours=1),
+        AnalyticsPeriod.DAY: now - timedelta(days=1),
+        AnalyticsPeriod.WEEK: now - timedelta(weeks=1),
+        AnalyticsPeriod.MONTH: now - timedelta(days=30),
+    }[period]
+    
+    interval = (now - period_start).total_seconds() / points
+    
+    metrics = [
+        m for m in app_state.usage_metrics
+        if m.metric_type == metric_type and m.timestamp >= period_start
+    ]
+    
+    # Create time buckets
+    time_series = []
+    for i in range(points):
+        bucket_start = period_start + timedelta(seconds=i * interval)
+        bucket_end = bucket_start + timedelta(seconds=interval)
+        
+        bucket_metrics = [
+            m for m in metrics
+            if bucket_start <= m.timestamp < bucket_end
+        ]
+        
+        value = len(bucket_metrics) if bucket_metrics else 0
+        
+        time_series.append(TimeSeriesData(
+            timestamp=bucket_start,
+            value=float(value),
+            label=metric_type
+        ))
+    
+    return time_series
+
+def generate_analytics_insights(
+    query_analytics: QueryAnalytics,
+    model_analytics: List[ModelAnalytics],
+    performance: PerformanceAnalytics
+) -> List[str]:
+    """Generate insights from analytics data"""
+    insights = []
+    
+    # Query insights
+    if query_analytics.queries_per_day > 1000:
+        insights.append(f"High query volume: {query_analytics.queries_per_day:.0f} queries/day")
+    
+    if query_analytics.success_rate < 0.95:
+        insights.append(f"Low success rate: {query_analytics.success_rate*100:.1f}% - investigate errors")
+    
+    # Model insights
+    if model_analytics:
+        top_model = model_analytics[0]
+        insights.append(f"Most used model: {top_model.model_name} ({top_model.usage_count} queries)")
+        
+        if top_model.cache_hit_rate > 0.7:
+            insights.append(f"Excellent cache performance: {top_model.cache_hit_rate*100:.0f}% hit rate")
+    
+    # Performance insights
+    if performance.p95_latency_ms > 5000:
+        insights.append(f"High P95 latency: {performance.p95_latency_ms:.0f}ms - consider optimization")
+    
+    if performance.error_rate > 0.05:
+        insights.append(f"Elevated error rate: {performance.error_rate*100:.1f}% - needs attention")
+    
+    if performance.uptime_percentage > 99.9:
+        insights.append(f"Exceptional uptime: {performance.uptime_percentage:.2f}%")
+    
+    return insights
+
+# Usage Analytics API Endpoints
+@app.get("/analytics/config")
+async def get_analytics_config():
+    """Get analytics configuration"""
+    return app_state.analytics_config
+
+@app.put("/analytics/config")
+async def update_analytics_config(config: AnalyticsConfig):
+    """Update analytics configuration"""
+    app_state.analytics_config = config
+    logger.info("analytics_config_updated", enabled=config.enabled)
+    return config
+
+@app.get("/analytics/query")
+async def get_query_analytics_endpoint(period: AnalyticsPeriod = AnalyticsPeriod.DAY):
+    """Get query analytics"""
+    analytics = get_query_analytics(period)
+    return analytics
+
+@app.get("/analytics/models")
+async def get_model_analytics_endpoint(period: AnalyticsPeriod = AnalyticsPeriod.DAY):
+    """Get model usage analytics"""
+    analytics = get_model_analytics(period)
+    return analytics
+
+@app.get("/analytics/performance")
+async def get_performance_analytics_endpoint(period: AnalyticsPeriod = AnalyticsPeriod.DAY):
+    """Get performance analytics"""
+    analytics = get_performance_analytics(period)
+    return analytics
+
+@app.get("/analytics/timeseries/{metric_type}")
+async def get_time_series_endpoint(
+    metric_type: str,
+    period: AnalyticsPeriod = AnalyticsPeriod.DAY,
+    points: int = 24
+):
+    """Get time series data for a metric"""
+    data = get_time_series_data(metric_type, period, points)
+    return data
+
+@app.get("/analytics/report")
+async def get_analytics_report(period: AnalyticsPeriod = AnalyticsPeriod.DAY):
+    """Get comprehensive analytics report"""
+    query_analytics = get_query_analytics(period)
+    model_analytics = get_model_analytics(period)
+    performance = get_performance_analytics(period)
+    time_series = get_time_series_data("query", period)
+    insights = generate_analytics_insights(query_analytics, model_analytics, performance)
+    
+    return AnalyticsReport(
+        period=period,
+        generated_at=datetime.utcnow(),
+        query_analytics=query_analytics,
+        model_analytics=model_analytics,
+        performance=performance,
+        time_series=time_series,
+        insights=insights
+    )
+
+@app.get("/analytics/metrics/count")
+async def get_metrics_count():
+    """Get total number of tracked metrics"""
+    return {
+        "total_metrics": len(app_state.usage_metrics),
+        "retention_days": app_state.analytics_config.retention_days,
+        "oldest_metric": app_state.usage_metrics[0].timestamp.isoformat() if app_state.usage_metrics else None,
+        "newest_metric": app_state.usage_metrics[-1].timestamp.isoformat() if app_state.usage_metrics else None
+    }
+
+@app.delete("/analytics/metrics")
+async def clear_analytics_metrics(older_than_days: Optional[int] = None):
+    """Clear analytics metrics"""
+    initial_count = len(app_state.usage_metrics)
+    
+    if older_than_days:
+        cutoff_date = datetime.utcnow() - timedelta(days=older_than_days)
+        app_state.usage_metrics = [
+            m for m in app_state.usage_metrics
+            if m.timestamp > cutoff_date
+        ]
+    else:
+        app_state.usage_metrics = []
+    
+    removed_count = initial_count - len(app_state.usage_metrics)
+    
+    logger.info("analytics_metrics_cleared", removed=removed_count)
+    
+    return {
+        "message": f"Cleared {removed_count} metrics",
+        "remaining": len(app_state.usage_metrics)
     }
 
 # Model Ensemble Management Endpoints
