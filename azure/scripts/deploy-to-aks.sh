@@ -107,14 +107,28 @@ kubectl create namespace dual-rag || true
 sed "s|ragllmacr.azurecr.io|$ACR_LOGIN_SERVER|g" \
   azure/k8s/rag-deployment.yaml > /tmp/rag-deployment.yaml
 
+# Deploy storage and Redis first
 kubectl apply -f azure/k8s/storage.yaml
+kubectl apply -f azure/k8s/redis-deployment.yaml
+sleep 10  # Wait for Redis
+
+# Deploy Ollama
 kubectl apply -f azure/k8s/ollama-statefulset.yaml
 sleep 30  # Wait for Ollama to start
 
+# Deploy RAG and WebUI
 kubectl apply -f /tmp/rag-deployment.yaml
 kubectl apply -f azure/k8s/webui-deployment.yaml
 
 echo "✓ Deployed to Kubernetes"
+echo ""
+
+# Remind about secrets
+echo "⚠  Don't forget to create API key secrets:"
+echo "   kubectl create secret generic api-keys \\"
+echo "     --from-literal=brave-api-key=your-key \\"
+echo "     --from-literal=github-token=your-token \\"
+echo "     -n dual-rag"
 echo ""
 
 # Wait for pods
