@@ -1,0 +1,9 @@
+llama-index
+llama-index-llms-ollama
+llama-index-embeddings-huggingface
+chromadb
+sentence-transformers
+requests
+beautifulsoup4
+fastapi
+uvicorn[standard]

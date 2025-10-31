@@ -1,0 +1,18 @@
+{
+  "models": [
+    {
+      "title": "Auto RAG",
+      "provider": "openai",
+      "model": "auto",
+      "apiBase": "http://localhost:3000/api/v1"
+    }
+  ],
+  "customCommands": [
+    {
+      "name": "rag",
+      "prompt": "RAG: {{input}} (file: {{file}})",
+      "description": "Dual RAG with auto model"
+    }
+  ],
+  "systemMessage": "Use RAG. Switch model: .cs/.ps1 → Qwen2.5, others → DeepSeek."
+}
