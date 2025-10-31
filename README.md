@@ -1,6 +1,6 @@
 # Dual RAG LLM System
 
-[![Version](https://img.shields.io/badge/version-1.20.0-blue.svg)](https://github.com/adrian207/dual-rag-llm/releases)
+[![Version](https://img.shields.io/badge/version-1.21.0-blue.svg)](https://github.com/adrian207/dual-rag-llm/releases)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/docker-20.10+-blue.svg)](https://www.docker.com/)
@@ -64,6 +64,17 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 ```
 
 ## Key Features
+
+### 🧪 Comprehensive Testing Framework (v1.21.0)
+- **Unit Tests**: 80%+ code coverage with pytest and async support
+- **Integration Tests**: End-to-end API testing with FastAPI TestClient
+- **Load Testing**: Locust-based performance testing with 3 user types
+- **Security Testing**: Protection against SQL injection, XSS, path traversal, command injection
+- **Performance Regression Tests**: Automated benchmarking with pytest-benchmark
+- **Chaos Engineering**: Kubernetes resilience testing with Chaos Mesh (pod failure, network latency, stress tests)
+- **CI/CD Integration**: Automated GitHub Actions workflows (6 jobs)
+- **150+ Tests**: Comprehensive test coverage across all modules
+- **Test Documentation**: 900+ line testing guide with examples
 
 ### 🗄️ Operations & Resilience (v1.20.0)
 - **PostgreSQL Vector Database**: Scalable vector storage with pgvector extension
@@ -737,11 +748,12 @@ request_timeout = 120.0       # LLM request timeout (seconds)
 
 ### 📚 Complete Guides
 
-- **[CHANGELOG.md](CHANGELOG.md)** - Complete release history for all 20 versions
+- **[CHANGELOG.md](CHANGELOG.md)** - Complete release history for all 21 versions
 - **[User Guide](docs/USER_GUIDE.md)** - Comprehensive 870+ line user manual
 - **[API Reference](docs/API_REFERENCE.md)** - Complete API documentation (90+ endpoints)
 - **[Contributing Guide](CONTRIBUTING.md)** - How to contribute
 - **[Roadmap](ROADMAP.md)** - Future features and plans
+- **[Testing Guide](docs/TESTING.md)** - 900+ line comprehensive testing framework
 - **[Disaster Recovery Guide](docs/DISASTER_RECOVERY.md)** - 690+ line comprehensive DR procedures
 
 ### 🚀 Deployment Guides
@@ -761,18 +773,18 @@ request_timeout = 120.0       # LLM request timeout (seconds)
 
 ## Version History
 
-**Current Version:** 1.20.0 (October 31, 2024)
+**Current Version:** 1.21.0 (October 31, 2024)
 
 See [CHANGELOG.md](CHANGELOG.md) for complete release notes.
 
 **Recent Releases:**
+- **v1.21.0** - Comprehensive Testing Framework (unit, integration, load, security, performance, chaos)
 - **v1.20.0** - Operations & Resilience (PostgreSQL, backup, DR automation)
 - **v1.19.0** - Kubernetes Deployment (Helm charts, auto-scaling, HA, GPU support)
 - **v1.18.0** - Cost Tracking & Budget Management (forecasting, alerts, analytics)
 - **v1.17.0** - Enterprise Admin Dashboard (comprehensive management interface)
-- **v1.16.0** - Usage Analytics (comprehensive tracking, insights, time-series data)
 
-[View all 20 releases →](CHANGELOG.md)
+[View all 21 releases →](CHANGELOG.md)
 
 ## License
 
@@ -825,7 +837,9 @@ This project builds upon excellent open-source work:
 
 ## Project Stats
 
-- **20 Major Versions** released
+- **21 Major Versions** released
+- **150+ Automated Tests** (unit, integration, security, performance)
+- **80%+ Test Coverage** with comprehensive test suite
 - **PostgreSQL Vector Database** with pgvector
 - **Automated Backup & DR** with Kubernetes CronJobs
 - **Production-Ready Kubernetes** with Helm charts
