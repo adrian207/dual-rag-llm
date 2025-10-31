@@ -25,8 +25,9 @@ import EncryptionPanel from '@/components/admin/EncryptionPanel'
 import ModelPerformance from '@/components/admin/ModelPerformance'
 import ConfigurationEditor from '@/components/admin/ConfigurationEditor'
 import AnalyticsDashboard from '@/components/admin/AnalyticsDashboard'
+import CostDashboard from '@/components/admin/CostDashboard'
 
-type DashboardTab = 'overview' | 'audit' | 'encryption' | 'models' | 'config' | 'analytics'
+type DashboardTab = 'overview' | 'audit' | 'encryption' | 'models' | 'config' | 'analytics' | 'costs'
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview')
@@ -50,6 +51,7 @@ export default function AdminDashboard() {
     { id: 'audit', label: 'Audit Logs', icon: FileText },
     { id: 'encryption', label: 'Encryption', icon: Lock },
     { id: 'models', label: 'Models', icon: Activity },
+    { id: 'costs', label: 'Cost Tracking', icon: TrendingUp },
     { id: 'config', label: 'Configuration', icon: Settings },
     { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   ]
@@ -120,6 +122,7 @@ export default function AdminDashboard() {
         {activeTab === 'audit' && <AuditLogViewer />}
         {activeTab === 'encryption' && <EncryptionPanel />}
         {activeTab === 'models' && <ModelPerformance />}
+        {activeTab === 'costs' && <CostDashboard />}
         {activeTab === 'config' && <ConfigurationEditor />}
         {activeTab === 'analytics' && <AnalyticsDashboard />}
       </main>
