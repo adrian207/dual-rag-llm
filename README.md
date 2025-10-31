@@ -45,6 +45,15 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 
 ## Key Features
 
+### ✅ Answer Validation & Verification (v1.8.0)
+- **7 Validation Checks**: Factuality, source verification, consistency, completeness, relevance, clarity, code validity
+- **Confidence Scoring**: Overall quality score (0-1) with detailed breakdown
+- **Source Verification**: Compare answers against RAG context
+- **Auto-Suggestions**: Actionable improvements for failed checks
+- **Quality Metrics**: Length, structure, examples, code blocks
+- **Approval System**: Auto-approve/reject based on threshold
+- **Real-time Stats**: Pass rates, approval rates, avg scores
+
 ### 🤖 Automatic Model Selection (v1.7.0)
 - **12 Query Types**: Intelligent classification (code gen, debug, explain, review, etc.)
 - **Smart Routing**: Automatically select best model for each query type
