@@ -76,6 +76,8 @@ class AppState:
     validation_config: ValidationConfig = ValidationConfig()
     factuality_checks: List[FactualityCheck] = []  # Factuality check history
     factuality_config: FactualityConfig = FactualityConfig()
+    formatted_responses: List[FormattedResponse] = []  # Formatting history
+    formatting_config: FormattingConfig = FormattingConfig()
 
 app_state = AppState()
 
@@ -547,6 +549,45 @@ class FactualityConfig(BaseModel):
     enable_source_verification: bool = True
     strict_mode: bool = False  # Require evidence for all claims
     hallucination_threshold: float = 0.7
+
+# Response Formatting Models
+class FormattingStyle(str, Enum):
+    """Response formatting styles"""
+    PLAIN = "plain"
+    MARKDOWN = "markdown"
+    STRUCTURED = "structured"
+    PROFESSIONAL = "professional"
+    CONCISE = "concise"
+    DETAILED = "detailed"
+
+class FormattedResponse(BaseModel):
+    """A formatted response"""
+    original: str
+    formatted: str
+    style: FormattingStyle
+    improvements: List[str] = []
+    
+    # Structure enhancements
+    has_sections: bool = False
+    has_code_blocks: int = 0
+    has_lists: bool = False
+    has_tables: bool = False
+    
+    # Readability metrics
+    original_length: int
+    formatted_length: int
+    improvement_score: float  # 0.0 to 1.0
+
+class FormattingConfig(BaseModel):
+    """Configuration for response formatting"""
+    enabled: bool = True
+    default_style: FormattingStyle = FormattingStyle.MARKDOWN
+    auto_add_sections: bool = True
+    auto_format_code: bool = True
+    auto_create_lists: bool = True
+    improve_readability: bool = True
+    add_emoji_headers: bool = False
+    max_line_length: int = 100
     
 class SystemStats(BaseModel):
     """System statistics"""
@@ -2750,6 +2791,352 @@ async def get_factuality_stats():
         "avg_hallucination_risk": round(avg_hallucination, 3),
         "claims_verified": total_verified,
         "support_rate": round(support_rate, 3)
+    }
+
+# Response Formatting Functions
+def format_response(response: str, style: FormattingStyle = FormattingStyle.MARKDOWN) -> FormattedResponse:
+    """Format and enhance response"""
+    
+    if not app_state.formatting_config.enabled:
+        return FormattedResponse(
+            original=response,
+            formatted=response,
+            style=style,
+            original_length=len(response),
+            formatted_length=len(response),
+            improvement_score=0.0
+        )
+    
+    formatted = response
+    improvements = []
+    
+    # 1. Add sections for long responses
+    if app_state.formatting_config.auto_add_sections and len(response) > 300:
+        formatted = add_sections(formatted)
+        if formatted != response:
+            improvements.append("Added section headers")
+    
+    # 2. Format code blocks
+    if app_state.formatting_config.auto_format_code:
+        formatted = enhance_code_blocks(formatted)
+        if "```" in formatted and formatted != response:
+            improvements.append("Enhanced code blocks")
+    
+    # 3. Create lists
+    if app_state.formatting_config.auto_create_lists:
+        formatted = create_lists(formatted)
+        if ("-" in formatted or "•" in formatted) and formatted != response:
+            improvements.append("Created structured lists")
+    
+    # 4. Improve readability
+    if app_state.formatting_config.improve_readability:
+        formatted = improve_readability(formatted, app_state.formatting_config.max_line_length)
+        if formatted != response:
+            improvements.append("Improved readability")
+    
+    # 5. Add emoji headers (if enabled)
+    if app_state.formatting_config.add_emoji_headers:
+        formatted = add_emoji_headers(formatted)
+        if formatted != response:
+            improvements.append("Added emoji headers")
+    
+    # Calculate metrics
+    has_sections = any(marker in formatted for marker in ["##", "###", "**"])
+    has_code_blocks = formatted.count("```") // 2
+    has_lists = "-" in formatted or "•" in formatted or any(f"{i}." in formatted for i in range(1, 10))
+    has_tables = "|" in formatted and "---" in formatted
+    
+    # Calculate improvement score
+    improvement_score = calculate_improvement_score(response, formatted, improvements)
+    
+    formatted_response = FormattedResponse(
+        original=response,
+        formatted=formatted,
+        style=style,
+        improvements=improvements,
+        has_sections=has_sections,
+        has_code_blocks=has_code_blocks,
+        has_lists=has_lists,
+        has_tables=has_tables,
+        original_length=len(response),
+        formatted_length=len(formatted),
+        improvement_score=improvement_score
+    )
+    
+    # Store formatting
+    app_state.formatted_responses.append(formatted_response)
+    
+    # Keep only last 200
+    if len(app_state.formatted_responses) > 200:
+        app_state.formatted_responses = app_state.formatted_responses[-200:]
+    
+    return formatted_response
+
+def add_sections(text: str) -> str:
+    """Add section headers to long text"""
+    lines = text.split('\n')
+    if len(lines) < 5:
+        return text
+    
+    # Look for natural section breaks
+    formatted_lines = []
+    in_code_block = False
+    
+    for i, line in enumerate(lines):
+        # Track code blocks
+        if "```" in line:
+            in_code_block = not in_code_block
+        
+        # Don't modify code blocks
+        if in_code_block:
+            formatted_lines.append(line)
+            continue
+        
+        # Add section headers before key phrases
+        line_lower = line.lower().strip()
+        
+        if i > 0 and not formatted_lines[-1].startswith("#"):
+            if line_lower.startswith(("step ", "1.", "2.", "3.", "first,", "second,", "finally,")):
+                if not formatted_lines[-1].strip().startswith("##"):
+                    formatted_lines.append("\n## Steps")
+            elif line_lower.startswith(("example:", "for example", "e.g.")):
+                if not formatted_lines[-1].strip().startswith("##"):
+                    formatted_lines.append("\n## Example")
+            elif line_lower.startswith(("note:", "important:", "warning:")):
+                formatted_lines.append("\n## ⚠️ Important")
+        
+        formatted_lines.append(line)
+    
+    return '\n'.join(formatted_lines)
+
+def enhance_code_blocks(text: str) -> str:
+    """Enhance code block formatting"""
+    if "```" not in text:
+        return text
+    
+    parts = text.split("```")
+    enhanced = []
+    
+    for i, part in enumerate(parts):
+        if i % 2 == 1:  # Inside code block
+            # Add language hint if missing
+            lines = part.split('\n', 1)
+            if lines[0].strip() and not any(lang in lines[0].lower() for lang in ["python", "javascript", "java", "c#", "go", "rust"]):
+                # Detect language
+                code = lines[1] if len(lines) > 1 else lines[0]
+                lang = detect_code_language(code)
+                if lang:
+                    enhanced.append(f"{lang}\n{part}")
+                else:
+                    enhanced.append(part)
+            else:
+                enhanced.append(part)
+        else:
+            enhanced.append(part)
+    
+    return "```".join(enhanced)
+
+def detect_code_language(code: str) -> str:
+    """Simple language detection"""
+    code_lower = code.lower()
+    
+    if "def " in code_lower or "import " in code_lower or "print(" in code_lower:
+        return "python"
+    elif "function " in code_lower or "const " in code_lower or "=>" in code:
+        return "javascript"
+    elif "class " in code and ("public " in code_lower or "private " in code_lower):
+        return "java"
+    elif "namespace" in code_lower or "using System" in code:
+        return "csharp"
+    elif "fn " in code_lower or "let mut" in code_lower:
+        return "rust"
+    elif "func " in code_lower and "package " in code_lower:
+        return "go"
+    
+    return ""
+
+def create_lists(text: str) -> str:
+    """Convert text to lists where appropriate"""
+    lines = text.split('\n')
+    formatted = []
+    in_code_block = False
+    
+    for line in lines:
+        if "```" in line:
+            in_code_block = not in_code_block
+            formatted.append(line)
+            continue
+        
+        if in_code_block:
+            formatted.append(line)
+            continue
+        
+        # Convert numbered patterns to lists
+        line_stripped = line.strip()
+        
+        # Check for implicit list items
+        if line_stripped.startswith(("- ", "* ", "• ")):
+            formatted.append(line)
+        elif any(line_stripped.startswith(f"{i}. ") or line_stripped.startswith(f"{i}) ") for i in range(1, 20)):
+            # Already a list
+            formatted.append(line)
+        elif line_stripped and len(line_stripped) < 100:
+            # Check if it's a sentence that should be a list item
+            if line_stripped.endswith((',', ';', ':')) and len(formatted) > 0:
+                # Might be start of a list
+                formatted.append(line)
+            else:
+                formatted.append(line)
+        else:
+            formatted.append(line)
+    
+    return '\n'.join(formatted)
+
+def improve_readability(text: str, max_line_length: int = 100) -> str:
+    """Improve text readability"""
+    lines = text.split('\n')
+    formatted = []
+    in_code_block = False
+    
+    for line in lines:
+        if "```" in line:
+            in_code_block = not in_code_block
+            formatted.append(line)
+            continue
+        
+        if in_code_block or len(line) <= max_line_length:
+            formatted.append(line)
+            continue
+        
+        # Break long lines at sentence boundaries
+        if '. ' in line and len(line) > max_line_length:
+            sentences = line.split('. ')
+            current_line = ""
+            
+            for sentence in sentences:
+                if len(current_line) + len(sentence) > max_line_length and current_line:
+                    formatted.append(current_line.strip())
+                    current_line = sentence + '. '
+                else:
+                    current_line += sentence + '. '
+            
+            if current_line:
+                formatted.append(current_line.strip())
+        else:
+            formatted.append(line)
+    
+    return '\n'.join(formatted)
+
+def add_emoji_headers(text: str) -> str:
+    """Add emojis to headers"""
+    lines = text.split('\n')
+    formatted = []
+    
+    emoji_map = {
+        "step": "📝", "example": "💡", "note": "📌", "important": "⚠️",
+        "warning": "⚠️", "tip": "💡", "conclusion": "✅", "summary": "📊",
+        "code": "💻", "result": "✨", "error": "❌", "success": "✅"
+    }
+    
+    for line in lines:
+        if line.startswith("##"):
+            # Check if header already has emoji
+            if not any(char in line[:5] for char in "🎯📝💡⚠️✅❌💻✨"):
+                # Find matching emoji
+                line_lower = line.lower()
+                for keyword, emoji in emoji_map.items():
+                    if keyword in line_lower:
+                        # Add emoji after ##
+                        parts = line.split(" ", 1)
+                        if len(parts) > 1:
+                            line = f"{parts[0]} {emoji} {parts[1]}"
+                        break
+        
+        formatted.append(line)
+    
+    return '\n'.join(formatted)
+
+def calculate_improvement_score(original: str, formatted: str, improvements: List[str]) -> float:
+    """Calculate formatting improvement score"""
+    score = 0.0
+    
+    # Base score on number of improvements
+    score += min(0.4, len(improvements) * 0.1)
+    
+    # Check for structure
+    if "##" in formatted and "##" not in original:
+        score += 0.2
+    
+    # Check for code blocks
+    if formatted.count("```") > original.count("```"):
+        score += 0.1
+    
+    # Check for lists
+    original_lists = original.count("-") + original.count("•")
+    formatted_lists = formatted.count("-") + formatted.count("•")
+    if formatted_lists > original_lists:
+        score += 0.15
+    
+    # Check readability (fewer very long lines)
+    original_long_lines = len([l for l in original.split('\n') if len(l) > 150])
+    formatted_long_lines = len([l for l in formatted.split('\n') if len(l) > 150])
+    if formatted_long_lines < original_long_lines:
+        score += 0.15
+    
+    return min(1.0, score)
+
+# Response Formatting API Endpoints
+@app.post("/formatting/format")
+async def format_response_endpoint(
+    response: str,
+    style: FormattingStyle = FormattingStyle.MARKDOWN
+):
+    """Format a response"""
+    formatted = format_response(response, style)
+    return formatted
+
+@app.get("/formatting/config")
+async def get_formatting_config():
+    """Get formatting configuration"""
+    return app_state.formatting_config
+
+@app.put("/formatting/config")
+async def update_formatting_config(config: FormattingConfig):
+    """Update formatting configuration"""
+    app_state.formatting_config = config
+    logger.info("updated_formatting_config", enabled=config.enabled, style=config.default_style)
+    return config
+
+@app.get("/formatting/history")
+async def get_formatting_history(limit: int = 50):
+    """Get recent formatted responses"""
+    return {"formatted_responses": app_state.formatted_responses[-limit:]}
+
+@app.get("/formatting/stats")
+async def get_formatting_stats():
+    """Get formatting statistics"""
+    if not app_state.formatted_responses:
+        return {
+            "total_formatted": 0,
+            "avg_improvement_score": 0,
+            "most_common_improvements": []
+        }
+    
+    total = len(app_state.formatted_responses)
+    avg_score = sum(fr.improvement_score for fr in app_state.formatted_responses) / total
+    
+    # Count improvement types
+    improvement_counts = {}
+    for fr in app_state.formatted_responses:
+        for imp in fr.improvements:
+            improvement_counts[imp] = improvement_counts.get(imp, 0) + 1
+    
+    most_common = sorted(improvement_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    
+    return {
+        "total_formatted": total,
+        "avg_improvement_score": round(avg_score, 3),
+        "most_common_improvements": [{"type": k, "count": v} for k, v in most_common]
     }
 
 # Model Ensemble Management Endpoints
