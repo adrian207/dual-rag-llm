@@ -80,6 +80,8 @@ class AppState:
     formatting_config: FormattingConfig = FormattingConfig()
     highlighted_code: List[HighlightedCode] = []  # Syntax highlighting history
     syntax_highlight_config: SyntaxHighlightConfig = SyntaxHighlightConfig()
+    language_config: LanguageConfig = LanguageConfig()
+    translations_cache: Dict[str, TranslatedResponse] = {}  # Cache translations
 
 app_state = AppState()
 
@@ -638,7 +640,55 @@ class SyntaxHighlightConfig(BaseModel):
     highlight_inline_code: bool = True
     show_line_numbers: bool = True
     wrap_long_lines: bool = False
-    
+
+# Multi-language Support Models
+class Language(str, Enum):
+    """Supported languages"""
+    ENGLISH = "en"
+    SPANISH = "es"
+    FRENCH = "fr"
+    GERMAN = "de"
+    JAPANESE = "ja"
+    CHINESE_SIMPLIFIED = "zh-CN"
+    PORTUGUESE = "pt"
+    RUSSIAN = "ru"
+    ITALIAN = "it"
+    KOREAN = "ko"
+
+class TranslationRequest(BaseModel):
+    """Translation request"""
+    text: str
+    source_lang: Language = Language.ENGLISH
+    target_lang: Language
+    context: Optional[str] = None
+
+class TranslatedResponse(BaseModel):
+    """Translated response"""
+    original_text: str
+    translated_text: str
+    source_lang: Language
+    target_lang: Language
+    confidence: float = 1.0
+
+class LanguageConfig(BaseModel):
+    """Language configuration"""
+    enabled: bool = True
+    default_language: Language = Language.ENGLISH
+    auto_detect: bool = True
+    translate_responses: bool = True
+    supported_languages: List[Language] = [
+        Language.ENGLISH,
+        Language.SPANISH,
+        Language.FRENCH,
+        Language.GERMAN,
+        Language.JAPANESE,
+        Language.CHINESE_SIMPLIFIED,
+        Language.PORTUGUESE,
+        Language.RUSSIAN,
+        Language.ITALIAN,
+        Language.KOREAN
+    ]
+
 class SystemStats(BaseModel):
     """System statistics"""
     cache: CacheStats
@@ -3563,6 +3613,203 @@ async def get_syntax_stats():
         "total_highlighted": total,
         "languages_used": lang_counts,
         "avg_line_count": round(avg_lines, 1)
+    }
+
+# Multi-language Support Functions
+def detect_language(text: str) -> Language:
+    """
+    Detect language of text using simple heuristics.
+    In production, use langdetect or similar library.
+    """
+    text_lower = text.lower()
+    
+    # Simple keyword-based detection (basic heuristics)
+    # In production, replace with proper language detection library
+    
+    # Spanish indicators
+    spanish_words = ["¿", "¡", "qué", "cómo", "cuándo", "dónde", "por qué", "español"]
+    if any(word in text_lower for word in spanish_words):
+        return Language.SPANISH
+    
+    # French indicators
+    french_words = ["où", "français", "comment", "qu'est-ce", "c'est", "merci"]
+    if any(word in text_lower for word in french_words):
+        return Language.FRENCH
+    
+    # German indicators
+    german_words = ["wie", "was", "wo", "warum", "deutsch", "ü", "ö", "ä", "ß"]
+    if any(word in text_lower for word in german_words):
+        return Language.GERMAN
+    
+    # Portuguese indicators
+    portuguese_words = ["português", "como", "onde", "quando", "por que", "ã", "õ"]
+    if any(word in text_lower for word in portuguese_words):
+        return Language.PORTUGUESE
+    
+    # Italian indicators
+    italian_words = ["come", "dove", "quando", "perché", "italiano", "è"]
+    if any(word in text_lower for word in italian_words):
+        return Language.ITALIAN
+    
+    # Russian indicators (Cyrillic characters)
+    if any('\u0400' <= char <= '\u04FF' for char in text):
+        return Language.RUSSIAN
+    
+    # Japanese indicators (Hiragana, Katakana, Kanji)
+    if any('\u3040' <= char <= '\u309F' or '\u30A0' <= char <= '\u30FF' or '\u4E00' <= char <= '\u9FFF' for char in text):
+        return Language.JAPANESE
+    
+    # Chinese indicators (CJK Unified Ideographs)
+    if any('\u4E00' <= char <= '\u9FFF' for char in text):
+        return Language.CHINESE_SIMPLIFIED
+    
+    # Korean indicators (Hangul)
+    if any('\uAC00' <= char <= '\uD7AF' for char in text):
+        return Language.KOREAN
+    
+    # Default to English
+    return Language.ENGLISH
+
+async def translate_with_llm(
+    text: str,
+    target_lang: Language,
+    source_lang: Optional[Language] = None
+) -> TranslatedResponse:
+    """
+    Translate text using LLM.
+    Uses the same Ollama instance for translation.
+    """
+    
+    if not source_lang:
+        source_lang = detect_language(text)
+    
+    # Check cache
+    cache_key = f"{source_lang}:{target_lang}:{hashlib.md5(text.encode()).hexdigest()}"
+    if cache_key in app_state.translations_cache:
+        logger.info("translation_cache_hit", cache_key=cache_key)
+        return app_state.translations_cache[cache_key]
+    
+    # Language names for prompt
+    lang_names = {
+        Language.ENGLISH: "English",
+        Language.SPANISH: "Spanish",
+        Language.FRENCH: "French",
+        Language.GERMAN: "German",
+        Language.JAPANESE: "Japanese",
+        Language.CHINESE_SIMPLIFIED: "Chinese (Simplified)",
+        Language.PORTUGUESE: "Portuguese",
+        Language.RUSSIAN: "Russian",
+        Language.ITALIAN: "Italian",
+        Language.KOREAN: "Korean"
+    }
+    
+    source_name = lang_names.get(source_lang, "English")
+    target_name = lang_names.get(target_lang, "English")
+    
+    # Create translation prompt
+    prompt = f"""Translate the following {source_name} text to {target_name}.
+Provide ONLY the translation, no explanations or additional text.
+
+Text to translate:
+{text}
+
+Translation:"""
+    
+    try:
+        # Use Ollama for translation
+        client = ollama.AsyncClient(host=OLLAMA_API)
+        response = await client.generate(
+            model="llama3.1:8b",  # Use a multilingual model
+            prompt=prompt,
+            options={"temperature": 0.3}  # Lower temperature for more consistent translation
+        )
+        
+        translated_text = response['response'].strip()
+        
+        result = TranslatedResponse(
+            original_text=text,
+            translated_text=translated_text,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            confidence=0.85
+        )
+        
+        # Cache translation
+        app_state.translations_cache[cache_key] = result
+        
+        # Keep cache size manageable
+        if len(app_state.translations_cache) > 1000:
+            # Remove oldest 200 entries
+            keys_to_remove = list(app_state.translations_cache.keys())[:200]
+            for key in keys_to_remove:
+                del app_state.translations_cache[key]
+        
+        logger.info("translation_completed", source=source_lang, target=target_lang)
+        return result
+        
+    except Exception as e:
+        logger.error("translation_failed", error=str(e))
+        # Return original text if translation fails
+        return TranslatedResponse(
+            original_text=text,
+            translated_text=text,
+            source_lang=source_lang,
+            target_lang=target_lang,
+            confidence=0.0
+        )
+
+# Multi-language API Endpoints
+@app.post("/language/detect")
+async def detect_language_endpoint(text: str):
+    """Detect the language of text"""
+    detected = detect_language(text)
+    return {
+        "text": text[:100] + "..." if len(text) > 100 else text,
+        "detected_language": detected,
+        "confidence": 0.8  # Simplified confidence
+    }
+
+@app.post("/language/translate")
+async def translate_endpoint(request: TranslationRequest):
+    """Translate text to target language"""
+    result = await translate_with_llm(
+        request.text,
+        request.target_lang,
+        request.source_lang
+    )
+    return result
+
+@app.get("/language/config")
+async def get_language_config():
+    """Get language configuration"""
+    return app_state.language_config
+
+@app.put("/language/config")
+async def update_language_config(config: LanguageConfig):
+    """Update language configuration"""
+    app_state.language_config = config
+    logger.info("updated_language_config", 
+                enabled=config.enabled,
+                default=config.default_language)
+    return config
+
+@app.get("/language/supported")
+async def get_supported_languages():
+    """Get list of supported languages"""
+    return {
+        "languages": [
+            {"code": "en", "name": "English", "native_name": "English"},
+            {"code": "es", "name": "Spanish", "native_name": "Español"},
+            {"code": "fr", "name": "French", "native_name": "Français"},
+            {"code": "de", "name": "German", "native_name": "Deutsch"},
+            {"code": "ja", "name": "Japanese", "native_name": "日本語"},
+            {"code": "zh-CN", "name": "Chinese (Simplified)", "native_name": "简体中文"},
+            {"code": "pt", "name": "Portuguese", "native_name": "Português"},
+            {"code": "ru", "name": "Russian", "native_name": "Русский"},
+            {"code": "it", "name": "Italian", "native_name": "Italiano"},
+            {"code": "ko", "name": "Korean", "native_name": "한국어"}
+        ],
+        "default": app_state.language_config.default_language
     }
 
 # Model Ensemble Management Endpoints

@@ -1,0 +1,61 @@
+{
+  "app_title": "Dual RAG LLM System",
+  "app_subtitle": "Intelligenter KI-Assistent mit Web-Tools",
+  "welcome_title": "Willkommen!",
+  "welcome_message": "Fragen Sie mich alles über Programmierung, Entwicklung oder technische Themen.",
+  "features": {
+    "docs": "Dokumentationssuche",
+    "web": "Websuche",
+    "github": "GitHub-Integration",
+    "cache": "Intelligenter Cache"
+  },
+  "tools": {
+    "web_search": "Websuche",
+    "github": "GitHub",
+    "compare_models": "Modelle Vergleichen"
+  },
+  "model_selector": {
+    "auto": "Auto (Intelligentes Routing)",
+    "microsoft": "Microsoft-Technologien",
+    "opensource": "Open Source",
+    "general": "Allgemeiner Zweck"
+  },
+  "input": {
+    "placeholder": "Stelle eine Frage... (z.B., 'Wie implementiere ich Redis-Caching in Python?')",
+    "send": "Senden",
+    "github_repo_placeholder": "Optional: benutzer/repo (z.B., 'fastapi/fastapi')"
+  },
+  "examples": {
+    "title": "Schnellbeispiele",
+    "python_async": "Python async-Funktion",
+    "csharp_features": "C# 12 Funktionen",
+    "fastapi_middleware": "FastAPI Middleware",
+    "powershell_errors": "PowerShell Fehler"
+  },
+  "sidebar": {
+    "system_info": "Systeminfo",
+    "total_queries": "Gesamtabfragen:",
+    "cache_hits": "Cache-Treffer:",
+    "web_searches": "Websuchen:",
+    "github_queries": "GitHub-Abfragen:",
+    "theme": "Thema",
+    "language": "Sprache",
+    "actions": "Aktionen",
+    "clear_cache": "Cache Leeren",
+    "refresh_stats": "Statistiken Aktualisieren"
+  },
+  "status": {
+    "cache_hit_rate": "Cache-Trefferrate:",
+    "status": "Status:",
+    "connecting": "Verbinden...",
+    "online": "Online",
+    "offline": "Offline"
+  },
+  "messages": {
+    "you": "Sie",
+    "assistant": "Assistent",
+    "cached": "Gecacht",
+    "error": "Fehler"
+  }
+}
+
