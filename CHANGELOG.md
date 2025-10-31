@@ -17,6 +17,162 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.19.0] - 2024-10-31
+
+### ☸️ Production-Ready Kubernetes Deployment - Cloud-Native Infrastructure
+
+**Major Features:**
+- **Complete Helm Chart**: Production-grade Helm chart with 15+ Kubernetes manifests
+- **Auto-scaling**: Horizontal Pod Autoscaler with CPU/memory-based scaling (2-10 replicas)
+- **High Availability**: Pod anti-affinity, Pod Disruption Budget, multi-replica deployment
+- **Persistent Storage**: PVC support for application data and Ollama model storage
+- **Ingress & TLS**: NGINX ingress controller with automated TLS via cert-manager
+- **Health Monitoring**: Comprehensive health probes (liveness, readiness, startup)
+- **Security Hardened**: Network policies, security contexts, secrets management
+- **GPU Support**: NVIDIA GPU integration for accelerated LLM inference
+- **Redis Integration**: Bitnami Redis Helm chart dependency for caching
+- **One-Command Deployment**: Automated bash script for complete cluster setup
+
+**Helm Chart Structure:**
+- `Chart.yaml` - Chart metadata, version 1.19.0, Redis dependency
+- `values.yaml` - 300+ lines of comprehensive configuration options
+- `templates/_helpers.tpl` - Reusable template helper functions
+- `templates/deployment.yaml` - Main application Deployment with Ollama sidecar
+- `templates/service.yaml` - ClusterIP Service configuration
+- `templates/ingress.yaml` - NGINX Ingress with TLS support
+- `templates/configmap.yaml` - Configuration data management
+- `templates/secret.yaml` - Sensitive data (API keys, encryption keys)
+- `templates/serviceaccount.yaml` - RBAC service account
+- `templates/hpa.yaml` - Horizontal Pod Autoscaler
+- `templates/pvc.yaml` - Persistent Volume Claims (data + Ollama models)
+- `templates/pdb.yaml` - Pod Disruption Budget
+- `templates/networkpolicy.yaml` - Network security policies
+
+**Auto-scaling Configuration:**
+- **Min Replicas**: 2 (high availability)
+- **Max Replicas**: 10 (scale for demand)
+- **CPU Target**: 70% utilization
+- **Memory Target**: 80% utilization
+- **Automatic Scale Up/Down**: Based on real-time metrics
+
+**Resource Management:**
+```yaml
+Requests:
+  CPU: 500m
+  Memory: 2Gi
+
+Limits:
+  CPU: 2000m
+  Memory: 4Gi
+```
+
+**High Availability Features:**
+- **Pod Anti-Affinity**: Spread pods across nodes
+- **Pod Disruption Budget**: Maintain minimum 1 available pod during updates
+- **Multi-Replica Deployment**: 2+ replicas for redundancy
+- **Rolling Updates**: Zero-downtime deployments
+- **Health Checks**: Automatic pod restart on failures
+
+**Security Features:**
+- **Network Policies**: Ingress/Egress traffic control
+- **Security Contexts**: Non-root user, read-only root filesystem
+- **Secrets Management**: Kubernetes Secrets for sensitive data
+- **RBAC**: Service account with minimal permissions
+- **TLS Encryption**: Automated certificate management
+- **Image Pull Policies**: Prevent stale images
+
+**GPU Integration:**
+- **NVIDIA Device Plugin**: GPU resource management
+- **Resource Requests**: `nvidia.com/gpu: "1"`
+- **Node Selectors**: GPU-specific node targeting
+- **Ollama Acceleration**: GPU-powered model inference
+
+**Persistent Storage:**
+- **Application Data**: 20 GB PVC
+- **Ollama Models**: 50 GB PVC
+- **Storage Class**: Configurable (AWS EBS, Azure Disk, GCP PD)
+- **Access Mode**: ReadWriteOnce
+
+**Monitoring & Observability:**
+- **Prometheus ServiceMonitor**: Automatic metrics scraping
+- **Health Endpoints**: `/health` for liveness/readiness probes
+- **Startup Probe**: Graceful startup handling
+- **Pod Annotations**: Prometheus scrape configuration
+
+**Ingress Configuration:**
+```yaml
+Ingress Class: nginx
+TLS: cert-manager integration
+Annotations:
+  - SSL redirect
+  - Proxy body size: 50MB
+  - Proxy timeout: 300s
+```
+
+**Redis Integration:**
+- **Bitnami Redis Chart**: Helm dependency
+- **Standalone Mode**: Single master configuration
+- **Persistence**: 8 GB PVC
+- **Authentication**: Password-protected
+- **Resource Limits**: 500m CPU, 1Gi memory
+
+**Deployment Script (`k8s/deploy.sh` - 168 lines):**
+- **Prerequisites Check**: kubectl, helm, cluster connectivity
+- **Namespace Creation**: Automatic namespace setup
+- **cert-manager Installation**: TLS certificate automation
+- **ingress-nginx Installation**: Ingress controller setup
+- **Secrets Generation**: Automatic encryption key generation
+- **Redis Installation**: Bitnami Helm repository addition
+- **Application Deployment**: Helm install/upgrade
+- **Health Verification**: Wait for pod readiness
+- **Status Display**: Deployment summary and access URLs
+
+**Documentation (`k8s/README.md` - 438 lines):**
+- **Complete Deployment Guide**: Step-by-step instructions
+- **Prerequisites**: Tools, cluster requirements
+- **Quick Start**: 4-step deployment process
+- **Configuration**: Detailed values.yaml documentation
+- **Advanced Deployment**: Multi-environment, GPU, HA setups
+- **Monitoring**: Prometheus, Grafana, ELK stack integration
+- **Troubleshooting**: Common issues and debug commands
+- **Production Checklist**: 12-point readiness checklist
+
+**Multi-Environment Support:**
+```bash
+# Development
+helm install dual-rag-dev ./helm/dual-rag-llm -f values-dev.yaml
+
+# Staging
+helm install dual-rag-staging ./helm/dual-rag-llm -f values-staging.yaml
+
+# Production
+helm install dual-rag-prod ./helm/dual-rag-llm -f values-prod.yaml
+```
+
+**Cloud Provider Support:**
+- **AWS EKS**: EBS storage, ALB ingress
+- **Azure AKS**: Azure Disk storage, Application Gateway
+- **Google GKE**: GCP Persistent Disk, GCE ingress
+- **On-Premises**: Local storage, NGINX ingress
+
+**Use Cases:**
+- **Enterprise Production**: Scalable, HA deployment
+- **Development**: Isolated dev environments
+- **Staging**: Pre-production testing
+- **Multi-Tenancy**: Separate namespaces per tenant
+- **Disaster Recovery**: Multi-region deployments
+
+**Code Statistics:**
+- **1,375+ lines** of Kubernetes manifests and documentation
+- **15 Kubernetes templates** in Helm chart
+- **300+ lines** values.yaml configuration
+- **168 lines** automated deployment script
+- **438 lines** comprehensive documentation
+
+This release provides **production-grade, cloud-native deployment** capabilities for enterprise Kubernetes environments!
+
+---
+
 ## [1.18.0] - 2024-10-31
 
 ### 💰 Cost Tracking & Budget Management - Financial Intelligence
