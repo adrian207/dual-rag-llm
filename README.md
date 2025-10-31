@@ -1,6 +1,6 @@
 # Dual RAG LLM System
 
-[![Version](https://img.shields.io/badge/version-1.13.0-blue.svg)](https://github.com/adrian207/dual-rag-llm/releases)
+[![Version](https://img.shields.io/badge/version-1.14.0-blue.svg)](https://github.com/adrian207/dual-rag-llm/releases)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/docker-20.10+-blue.svg)](https://www.docker.com/)
@@ -64,6 +64,17 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 ```
 
 ## Key Features
+
+### 🔒 Enterprise Audit Logging (v1.14.0)
+- **24 Event Types**: API requests, queries, system events, security events, data operations
+- **5 Severity Levels**: Debug, Info, Warning, Error, Critical
+- **Comprehensive Tracking**: Timestamps, IP addresses, endpoints, durations, error messages
+- **Advanced Filtering**: By event type, severity, user, date range, endpoint, duration
+- **Export Capabilities**: JSON and CSV formats with filters
+- **Configurable Retention**: Automatic log rotation with configurable limits (default: 90 days, 100K logs)
+- **Statistics Dashboard**: Event counts, error rates, average durations, top endpoints
+- **Privacy Controls**: Configurable logging of request bodies and response data
+- **Compliance Ready**: Complete audit trail for security and regulatory requirements
 
 ### ⚛️ Modern React Frontend (v1.13.0)
 - **React 18 + TypeScript**: Modern, type-safe development
@@ -681,18 +692,18 @@ request_timeout = 120.0       # LLM request timeout (seconds)
 
 ## Version History
 
-**Current Version:** 1.13.0 (October 31, 2024)
+**Current Version:** 1.14.0 (October 31, 2024)
 
 See [CHANGELOG.md](CHANGELOG.md) for complete release notes.
 
 **Recent Releases:**
+- **v1.14.0** - Enterprise Audit Logging (24 event types, compliance ready)
 - **v1.13.0** - Modern React Frontend (React 18 + TypeScript + Vite)
 - **v1.12.0** - Multi-language Support (10 languages)
 - **v1.11.0** - Code Syntax Highlighting (22 languages)
 - **v1.10.0** - Response Formatting (6 styles)
-- **v1.9.0** - Factuality Checking & Hallucination Detection
 
-[View all 13 releases →](CHANGELOG.md)
+[View all 14 releases →](CHANGELOG.md)
 
 [View all 12 releases →](CHANGELOG.md)
 
@@ -747,12 +758,13 @@ This project builds upon excellent open-source work:
 
 ## Project Stats
 
-- **13 Major Versions** released
+- **14 Major Versions** released
 - **Modern React Frontend** with TypeScript
+- **Enterprise Audit Logging** with 24 event types
 - **22 Programming Languages** supported (syntax highlighting)
 - **10 Human Languages** supported (UI + translation)
-- **90+ API Endpoints** documented
-- **5,000+ Lines** of production code
+- **95+ API Endpoints** documented
+- **5,500+ Lines** of production code
 - **3,500+ Lines** of documentation
 - **3+ Billion** potential users (language reach)
 
@@ -765,7 +777,7 @@ If you use this project in your research or production, please cite:
   author = {Johnson, Adrian},
   title = {Dual RAG LLM System: Enterprise RAG with Multi-language Support},
   year = {2024},
-  version = {1.13.0},
+  version = {1.14.0},
   url = {https://github.com/adrian207/dual-rag-llm}
 }
 ```
@@ -773,5 +785,5 @@ If you use this project in your research or production, please cite:
 ---
 
 **Built with ❤️ by Adrian Johnson**  
-**Last Updated:** October 31, 2024 | **Version:** 1.13.0
+**Last Updated:** October 31, 2024 | **Version:** 1.14.0
 
