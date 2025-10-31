@@ -1,8 +1,28 @@
 # Dual RAG LLM System
 
+[![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](https://github.com/adrian207/dual-rag-llm/releases)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-20.10+-blue.svg)](https://www.docker.com/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
+> **Enterprise-grade RAG system with 12 major features, 10 language support, and production-ready Azure deployment**
+
 **Author:** Adrian Johnson <adrian207@gmail.com>
 
-An intelligent RAG (Retrieval-Augmented Generation) system that automatically routes queries to specialized Large Language Models and knowledge bases based on technology context. The system distinguishes between Microsoft technologies (C#, PowerShell, YAML, XAML) and Open Source technologies, providing optimized responses for each domain.
+An intelligent, production-ready RAG (Retrieval-Augmented Generation) system featuring automatic model selection, comprehensive quality assurance, and multi-language support. Built for scalability with Azure deployment guides and enterprise features including A/B testing, ensemble strategies, and factuality checking.
+
+## Table of Contents
+
+- [Key Features](#key-features)
+- [Architecture](#architecture-overview)
+- [Quick Start](#quick-start)
+- [Azure Deployment](#️-azure-deployment)
+- [Documentation](#documentation)
+- [Usage](#usage)
+- [Configuration](#configuration-reference)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Architecture Overview
 
@@ -152,7 +172,7 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 - **Combined tool usage** - RAG + Web + GitHub in single query
 - **Tool statistics** - Track usage and performance
 
-### 🎨 Interactive UI (v1.2.0) ⭐ NEW
+### 🎨 Interactive UI (v1.2.0)
 - **Real-time streaming** - Token-by-token response generation
 - **Modern web interface** - Dark theme, responsive design
 - **Live statistics** - Cache hit rate, query counts
@@ -294,10 +314,10 @@ docker compose logs -f rag
 
 ### 7. Access Interfaces
 
-- **Interactive UI** ⭐: http://localhost:8000/ui (NEW!)
-- **Open-WebUI**: http://localhost:3000
+- **Interactive UI**: http://localhost
 - **RAG API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
+- **Open-WebUI**: http://localhost:3000 (optional)
 - **Ollama API**: http://localhost:11434
 
 ## Usage
@@ -622,40 +642,120 @@ request_timeout = 120.0       # LLM request timeout (seconds)
 5. **Rate limiting** - [Unverified] Consider adding nginx reverse proxy
 6. **HTTPS** - [Unverified] Use reverse proxy with SSL certificates
 
-## Future Enhancements
+## Documentation
 
-- [ ] Response caching with Redis
-- [ ] Multi-model ensemble responses
-- [ ] Custom model fine-tuning pipeline
-- [ ] Metrics dashboard (Prometheus + Grafana)
-- [ ] A/B testing framework
-- [ ] Streaming responses
-- [ ] Multi-language support
-- [ ] User feedback collection
-- [ ] Query analytics
+### 📚 Complete Guides
+
+- **[CHANGELOG.md](CHANGELOG.md)** - Complete release history for all 12 versions
+- **[User Guide](docs/USER_GUIDE.md)** - Comprehensive 870+ line user manual
+- **[API Reference](docs/API_REFERENCE.md)** - Complete API documentation (90+ endpoints)
+- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute
+- **[Roadmap](ROADMAP.md)** - Future features and plans
+
+### 🚀 Deployment Guides
+
+- **[Quick Start](QUICKSTART.md)** - Get running in 5 minutes
+- **[Azure Deployment](azure/README.md)** - Complete Azure guide
+- **[AKS Guide](azure/AKS_DEPLOYMENT.md)** - Kubernetes deployment
+- **[PowerShell Scripts](azure/POWERSHELL_DEPLOYMENT.md)** - Windows deployment
+- **[Model Ensembles](docs/MODEL_ENSEMBLES.md)** - Ensemble strategies guide
+
+### 🔧 Feature Documentation
+
+- **Dynamic Model Switching** - `docs/DYNAMIC_MODEL_SWITCHING.md`
+- **Web Tools Integration** - `docs/WEB_TOOLS_GUIDE.md` 
+- **Development Workflow** - `DEVELOPMENT_WORKFLOW.md`
+
+## Version History
+
+**Current Version:** 1.12.0 (October 31, 2024)
+
+See [CHANGELOG.md](CHANGELOG.md) for complete release notes.
+
+**Recent Releases:**
+- **v1.12.0** - Multi-language Support (10 languages)
+- **v1.11.0** - Code Syntax Highlighting (22 languages)
+- **v1.10.0** - Response Formatting (6 styles)
+- **v1.9.0** - Factuality Checking & Hallucination Detection
+- **v1.8.0** - Answer Validation (7 checks)
+
+[View all 12 releases →](CHANGELOG.md)
 
 ## License
 
-[Specify your license]
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Contributing
 
-Contributions welcome! Please:
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for:
+- Code of Conduct
+- Development setup
+- Coding standards
+- Pull request process
+- Release guidelines
+
+**Quick Start:**
 1. Fork the repository
-2. Create a feature branch
-3. Add tests for new features
-4. Submit a pull request
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Follow coding standards (PEP 8, type hints, docstrings)
+4. Add tests for new features
+5. Submit a pull request
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
 ## Support
 
-For issues and questions:
-- GitHub Issues: [repository-url]/issues
-- Email: adrian207@gmail.com
+### Getting Help
+
+- **📖 Documentation**: Start with [User Guide](docs/USER_GUIDE.md) or [API Reference](docs/API_REFERENCE.md)
+- **🐛 Bug Reports**: [GitHub Issues](https://github.com/adrian207/dual-rag-llm/issues)
+- **💡 Feature Requests**: [GitHub Issues](https://github.com/adrian207/dual-rag-llm/issues)
+- **📧 Email**: adrian207@gmail.com
+- **💬 Discussions**: GitHub Discussions (coming soon)
+
+### Troubleshooting
+
+See the [User Guide - Troubleshooting](docs/USER_GUIDE.md#troubleshooting) section for common issues and solutions.
 
 ## Acknowledgments
 
-- Ollama team for the excellent LLM server
-- LlamaIndex for the RAG framework
-- Open-WebUI for the user interface
-- Qwen and DeepSeek teams for the models
+This project builds upon excellent open-source work:
+
+- **[Ollama](https://ollama.ai/)** - LLM inference server
+- **[ChromaDB](https://www.trychroma.com/)** - Vector database
+- **[FastAPI](https://fastapi.tiangolo.com/)** - Modern web framework
+- **[HuggingFace](https://huggingface.co/)** - Embedding models
+- **[Qwen Team](https://github.com/QwenLM/Qwen)** - Qwen 2.5 Coder models
+- **[DeepSeek](https://www.deepseek.com/)** - DeepSeek Coder models
+- **[highlight.js](https://highlightjs.org/)** - Syntax highlighting
+- **[marked.js](https://marked.js.org/)** - Markdown parsing
+
+## Project Stats
+
+- **12 Major Versions** released
+- **22 Programming Languages** supported (syntax highlighting)
+- **10 Human Languages** supported (UI + translation)
+- **90+ API Endpoints** documented
+- **4,000+ Lines** of production code
+- **3,000+ Lines** of documentation
+- **3+ Billion** potential users (language reach)
+
+## Citation
+
+If you use this project in your research or production, please cite:
+
+```bibtex
+@software{dual_rag_llm_2024,
+  author = {Johnson, Adrian},
+  title = {Dual RAG LLM System: Enterprise RAG with Multi-language Support},
+  year = {2024},
+  version = {1.12.0},
+  url = {https://github.com/adrian207/dual-rag-llm}
+}
+```
+
+---
+
+**Built with ❤️ by Adrian Johnson**  
+**Last Updated:** October 31, 2024 | **Version:** 1.12.0
 
