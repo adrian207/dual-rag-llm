@@ -9,6 +9,14 @@ services:
       - "11434:11434"
     volumes:
       - ollama_models:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     deploy:
       resources:
         reservations:
@@ -16,6 +24,8 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    networks:
+      - rag-network
 
   webui:
     image: ghcr.io/open-webui/open-webui:main
@@ -25,14 +35,27 @@ services:
       - "3000:8080"
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
-      - WEBUI_AUTH=false
+      - WEBUI_AUTH=true  # Enable authentication for security
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY:-change-this-secret-key}
+      - RAG_API_BASE_URL=http://rag:8000
     volumes:
       - webui_data:/app/backend/data
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - rag-network
 
   rag:
-    build: ./rag
+    build:
+      context: ./rag
+      dockerfile: Dockerfile
     container_name: rag-service
     restart: unless-stopped
     ports:
@@ -40,11 +63,21 @@ services:
     volumes:
       - ./rag/data:/app/data
       - ./rag/indexes:/app/indexes
+      - ./rag/logs:/app/logs
       - ./workspace:/workspace
     environment:
       - OLLAMA_API=http://ollama:11434
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     deploy:
       resources:
         reservations:
@@ -52,6 +85,12 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    networks:
+      - rag-network
+
+networks:
+  rag-network:
+    driver: bridge
 
 volumes:
   ollama_models:

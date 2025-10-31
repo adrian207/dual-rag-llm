@@ -1,0 +1,30 @@
+# Docker Compose override for CPU-only systems
+# Usage: docker compose -f docker-compose.yml -f docker-compose.cpu.yml up -d
+# Author: Adrian Johnson <adrian207@gmail.com>
+
+version: '3.9'
+
+services:
+  ollama:
+    # Remove GPU requirements for CPU-only
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 16G
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_NUM_THREADS=8
+
+  rag:
+    # Remove GPU requirements for CPU-only
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+    environment:
+      - OLLAMA_API=http://ollama:11434
+      - LOG_LEVEL=INFO
+      - PYTHONUNBUFFERED=1
+
