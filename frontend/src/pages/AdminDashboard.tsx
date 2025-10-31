@@ -24,6 +24,7 @@ import AuditLogViewer from '@/components/admin/AuditLogViewer'
 import EncryptionPanel from '@/components/admin/EncryptionPanel'
 import ModelPerformance from '@/components/admin/ModelPerformance'
 import ConfigurationEditor from '@/components/admin/ConfigurationEditor'
+import AnalyticsDashboard from '@/components/admin/AnalyticsDashboard'
 
 type DashboardTab = 'overview' | 'audit' | 'encryption' | 'models' | 'config' | 'analytics'
 
@@ -120,11 +121,7 @@ export default function AdminDashboard() {
         {activeTab === 'encryption' && <EncryptionPanel />}
         {activeTab === 'models' && <ModelPerformance />}
         {activeTab === 'config' && <ConfigurationEditor />}
-        {activeTab === 'analytics' && (
-          <div className="text-center py-12 text-gray-500">
-            Analytics Dashboard - Coming Soon
-          </div>
-        )}
+        {activeTab === 'analytics' && <AnalyticsDashboard />}
       </main>
     </div>
   )

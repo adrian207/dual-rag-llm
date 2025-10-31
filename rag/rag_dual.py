@@ -92,6 +92,7 @@ class AppState:
 app_state = AppState()
 app_state.audit_config = AuditConfig()
 app_state.analytics_config = AnalyticsConfig()
+app_state.start_time = datetime.utcnow()  # Track uptime
 
 # Initialize encryption if key is provided
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_MASTER_KEY")
