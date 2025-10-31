@@ -72,8 +72,8 @@ services:
 
   rag:
     build:
-      context: ./rag
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./rag/Dockerfile
     container_name: rag-service
     restart: unless-stopped
     ports:
@@ -83,6 +83,7 @@ services:
       - ./rag/indexes:/app/indexes
       - ./rag/logs:/app/logs
       - ./workspace:/workspace
+      - ./ui:/app/ui
     environment:
       - OLLAMA_API=http://ollama:11434
       - REDIS_URL=redis://redis:6379
