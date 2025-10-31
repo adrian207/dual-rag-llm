@@ -45,6 +45,15 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 
 ## Key Features
 
+### 🎨 Response Formatting (v1.10.0)
+- **6 Formatting Styles**: Plain, Markdown, Structured, Professional, Concise, Detailed
+- **Auto-Sections**: Intelligent header insertion for long responses
+- **Code Enhancement**: Language detection and syntax hints
+- **List Creation**: Convert text to structured lists
+- **Readability**: Line length optimization and sentence breaking
+- **Emoji Headers**: Optional visual enhancement
+- **Improvement Scoring**: Track formatting quality (0-1)
+
 ### 🔍 Factuality Checking (v1.9.0)
 - **Claim Extraction**: Automatically identify factual claims in answers
 - **Hallucination Detection**: 5 indicators (false confidence, fabricated sources, inconsistent details, etc.)
