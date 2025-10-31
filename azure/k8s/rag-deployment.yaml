@@ -48,6 +48,17 @@ spec:
                 sleep 2
               done
               echo "Ollama is ready!"
+        - name: wait-for-redis
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z redis-service 6379; do
+                echo "Waiting for Redis service..."
+                sleep 2
+              done
+              echo "Redis is ready!"
       containers:
         - name: rag
           image: ragllmacr.azurecr.io/rag-service:v1.0.0  # Update with your ACR
@@ -57,6 +68,27 @@ spec:
           envFrom:
             - configMapRef:
                 name: rag-config
+          env:
+            - name: REDIS_URL
+              value: "redis://redis-service:6379"
+            - name: BRAVE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-keys
+                  key: brave-api-key
+                  optional: true
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: api-keys
+                  key: github-token
+                  optional: true
+            - name: ENABLE_CACHING
+              value: "true"
+            - name: ENABLE_WEB_SEARCH
+              value: "true"
+            - name: ENABLE_GITHUB
+              value: "true"
           resources:
             requests:
               memory: "4Gi"
