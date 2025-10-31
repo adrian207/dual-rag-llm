@@ -1,0 +1,43 @@
+# Testing Dependencies for Dual RAG LLM
+# Author: Adrian Johnson <adrian207@gmail.com>
+
+# Core Testing
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-asyncio==0.21.1
+pytest-mock==3.12.0
+pytest-benchmark==4.0.0
+pytest-timeout==2.2.0
+
+# Integration Testing
+httpx==0.25.2
+fastapi[all]==0.104.1
+
+# Load Testing
+locust==2.19.1
+
+# Security Testing
+safety==2.3.5
+bandit==1.7.5
+
+# Code Quality
+flake8==6.1.0
+black==23.11.0
+isort==5.12.0
+mypy==1.7.1
+
+# Coverage Tools
+coverage[toml]==7.3.2
+
+# Performance Monitoring
+pytest-profiling==1.7.0
+memory-profiler==0.61.0
+
+# Test Data
+faker==20.1.0
+factory-boy==3.3.0
+
+# Mocking
+responses==0.24.1
+freezegun==1.4.0
+
