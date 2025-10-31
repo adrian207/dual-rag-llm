@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dual RAG LLM System - Interactive Interface</title>
     <link rel="stylesheet" href="styles.css">
+    <!-- Syntax Highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/vs2015.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/11.1.1/marked.min.js"></script>
 </head>
 <body>
     <div class="container">
@@ -146,6 +150,19 @@
                             <span class="info-value" id="githubQueries">0</span>
                         </div>
                     </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>🎨 Theme</h3>
+                    <select id="syntaxTheme" class="theme-select">
+                        <option value="vs2015">VS Dark (Default)</option>
+                        <option value="github-dark">GitHub Dark</option>
+                        <option value="monokai">Monokai</option>
+                        <option value="dracula">Dracula</option>
+                        <option value="nord">Nord</option>
+                        <option value="atom-one-dark">Atom One Dark</option>
+                        <option value="github">GitHub Light</option>
+                    </select>
                 </div>
 
                 <div class="sidebar-section">
