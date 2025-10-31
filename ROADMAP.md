@@ -78,7 +78,7 @@ Future development plans and enhancement ideas for the dual RAG system.
 
 ### Response Quality
 - [x] Answer validation and verification ✅ **(v1.8.0 - Completed)**
-- [ ] Factuality checking
+- [x] Factuality checking ✅ **(v1.9.0 - Completed)**
 - [ ] Response formatting improvements
 - [ ] Code syntax highlighting
 - [ ] Multi-language support

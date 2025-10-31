@@ -45,6 +45,15 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 
 ## Key Features
 
+### 🔍 Factuality Checking (v1.9.0)
+- **Claim Extraction**: Automatically identify factual claims in answers
+- **Hallucination Detection**: 5 indicators (false confidence, fabricated sources, inconsistent details, etc.)
+- **Source Verification**: Cross-reference claims with RAG context
+- **Verdict System**: Supported/Contradicted/Uncertain/Unverifiable
+- **Risk Scoring**: 0-1 hallucination risk calculation
+- **Reliability Assessment**: Binary reliable/unreliable determination
+- **Statistics API**: Track factuality across all responses
+
 ### ✅ Answer Validation & Verification (v1.8.0)
 - **7 Validation Checks**: Factuality, source verification, consistency, completeness, relevance, clarity, code validity
 - **Confidence Scoring**: Overall quality score (0-1) with detailed breakdown
