@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: rag-service
+  namespace: dual-rag
+spec:
+  selector:
+    app: rag
+  type: LoadBalancer
+  ports:
+    - name: api
+      port: 8000
+      targetPort: 8000
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rag-deployment
+  namespace: dual-rag
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: rag
+  template:
+    metadata:
+      labels:
+        app: rag
+        version: v1
+    spec:
+      nodeSelector:
+        sku: gpu
+      tolerations:
+        - key: sku
+          operator: Equal
+          value: gpu
+          effect: NoSchedule
+      initContainers:
+        - name: wait-for-ollama
+          image: busybox:1.35
+          command:
+            - sh
+            - -c
+            - |
+              until nc -z ollama-service 11434; do
+                echo "Waiting for Ollama service..."
+                sleep 2
+              done
+              echo "Ollama is ready!"
+      containers:
+        - name: rag
+          image: ragllmacr.azurecr.io/rag-service:v1.0.0  # Update with your ACR
+          ports:
+            - containerPort: 8000
+              name: api
+          envFrom:
+            - configMapRef:
+                name: rag-config
+          resources:
+            requests:
+              memory: "4Gi"
+              cpu: "2"
+              nvidia.com/gpu: 1
+            limits:
+              memory: "16Gi"
+              cpu: "4"
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - name: indexes
+              mountPath: /app/indexes
+            - name: logs
+              mountPath: /app/logs
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+      volumes:
+        - name: indexes
+          persistentVolumeClaim:
+            claimName: rag-indexes-pvc
+        - name: logs
+          emptyDir: {}
+

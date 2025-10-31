@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dual-rag
+  labels:
+    name: dual-rag
+    environment: production
+
