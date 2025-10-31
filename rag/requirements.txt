@@ -22,6 +22,14 @@ pydantic==2.5.3
 # HTTP Client
 httpx==0.26.0
 
+# Caching
+redis==5.0.1
+aioredis==2.0.1
+
+# Web Search & APIs
+brave-search==0.2.0
+PyGithub==2.1.1
+
 # Utilities
 requests==2.31.0
 beautifulsoup4==4.12.3

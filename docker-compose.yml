@@ -52,6 +52,24 @@ services:
     networks:
       - rag-network
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis-cache
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks:
+      - rag-network
+
   rag:
     build:
       context: ./rag
@@ -67,10 +85,17 @@ services:
       - ./workspace:/workspace
     environment:
       - OLLAMA_API=http://ollama:11434
+      - REDIS_URL=redis://redis:6379
       - LOG_LEVEL=INFO
       - PYTHONUNBUFFERED=1
+      - BRAVE_API_KEY=${BRAVE_API_KEY}
+      - GITHUB_TOKEN=${GITHUB_TOKEN}
+      - ENABLE_WEB_SEARCH=${ENABLE_WEB_SEARCH:-true}
+      - ENABLE_GITHUB=${ENABLE_GITHUB:-true}
     depends_on:
       ollama:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -95,3 +120,4 @@ networks:
 volumes:
   ollama_models:
   webui_data:
+  redis_data:
