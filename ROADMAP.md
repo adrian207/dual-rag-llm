@@ -80,7 +80,7 @@ Future development plans and enhancement ideas for the dual RAG system.
 - [x] Answer validation and verification ✅ **(v1.8.0 - Completed)**
 - [x] Factuality checking ✅ **(v1.9.0 - Completed)**
 - [x] Response formatting improvements ✅ **(v1.10.0 - Completed)**
-- [ ] Code syntax highlighting
+- [x] Code syntax highlighting ✅ **(v1.11.0 - Completed)**
 - [ ] Multi-language support
 
 ### Training & Fine-tuning

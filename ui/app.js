@@ -20,6 +20,7 @@ const statusIndicator = document.getElementById('status');
 const cacheHitRate = document.getElementById('cacheHitRate');
 const clearCacheBtn = document.getElementById('clearCacheBtn');
 const refreshStatsBtn = document.getElementById('refreshStatsBtn');
+const syntaxThemeSelect = document.getElementById('syntaxTheme');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -27,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
     fetchStats();
     setupEventListeners();
     setInterval(fetchStats, 30000); // Update stats every 30s
+    initializeSyntaxHighlighting();
 });
 
 function setupEventListeners() {
@@ -64,6 +66,9 @@ function setupEventListeners() {
     clearCacheBtn.addEventListener('click', clearCache);
     refreshStatsBtn.addEventListener('click', fetchStats);
     
+    // Syntax theme change
+    syntaxThemeSelect.addEventListener('change', changeSyntaxTheme);
+    
     // Example buttons
     document.querySelectorAll('.example-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -81,6 +86,56 @@ function setupEventListeners() {
             questionInput.focus();
         });
     });
+}
+
+// Syntax Highlighting Functions
+function initializeSyntaxHighlighting() {
+    // Configure marked to use highlight.js
+    if (typeof marked !== 'undefined') {
+        marked.setOptions({
+            highlight: function(code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    try {
+                        return hljs.highlight(code, { language: lang }).value;
+                    } catch (err) {}
+                }
+                return hljs.highlightAuto(code).value;
+            },
+            breaks: true,
+            gfm: true
+        });
+    }
+}
+
+function changeSyntaxTheme(event) {
+    const theme = event.target.value;
+    const link = document.querySelector('link[href*="highlight.js"]');
+    if (link) {
+        link.href = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/${theme}.min.css`;
+    }
+}
+
+function applyS
+
+yntaxHighlighting(element) {
+    // Find all code blocks and apply highlighting
+    element.querySelectorAll('pre code').forEach((block) => {
+        hljs.highlightElement(block);
+    });
+}
+
+function renderMarkdown(text) {
+    if (typeof marked === 'undefined') {
+        return text.replace(/\n/g, '<br>');
+    }
+    
+    try {
+        const html = marked.parse(text);
+        return html;
+    } catch (e) {
+        console.error('Markdown parsing error:', e);
+        return text.replace(/\n/g, '<br>');
+    }
 }
 
 async function checkHealth() {

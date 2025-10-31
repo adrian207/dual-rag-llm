@@ -78,6 +78,8 @@ class AppState:
     factuality_config: FactualityConfig = FactualityConfig()
     formatted_responses: List[FormattedResponse] = []  # Formatting history
     formatting_config: FormattingConfig = FormattingConfig()
+    highlighted_code: List[HighlightedCode] = []  # Syntax highlighting history
+    syntax_highlight_config: SyntaxHighlightConfig = SyntaxHighlightConfig()
 
 app_state = AppState()
 
@@ -588,6 +590,54 @@ class FormattingConfig(BaseModel):
     improve_readability: bool = True
     add_emoji_headers: bool = False
     max_line_length: int = 100
+
+# Syntax Highlighting Models
+class HighlightTheme(str, Enum):
+    """Syntax highlighting themes"""
+    VS_DARK = "vs-dark"
+    VS_LIGHT = "vs-light"
+    GITHUB_DARK = "github-dark"
+    GITHUB_LIGHT = "github-light"
+    MONOKAI = "monokai"
+    DRACULA = "dracula"
+    NORD = "nord"
+    SOLARIZED_DARK = "solarized-dark"
+    SOLARIZED_LIGHT = "solarized-light"
+
+class CodeLanguage(BaseModel):
+    """Detected code language"""
+    language: str
+    confidence: float  # 0.0 to 1.0
+    aliases: List[str] = []
+    file_extension: str = ""
+
+class CodeBlock(BaseModel):
+    """A code block with metadata"""
+    code: str
+    language: CodeLanguage
+    line_start: int
+    line_end: int
+    has_comments: bool = False
+    has_imports: bool = False
+    complexity: str = "simple"  # simple, moderate, complex
+
+class HighlightedCode(BaseModel):
+    """Code with highlighting metadata"""
+    original: str
+    language: str
+    theme: HighlightTheme
+    tokens: List[Dict[str, str]] = []  # type, value pairs
+    line_count: int
+    has_syntax_errors: bool = False
+
+class SyntaxHighlightConfig(BaseModel):
+    """Configuration for syntax highlighting"""
+    enabled: bool = True
+    default_theme: HighlightTheme = HighlightTheme.VS_DARK
+    auto_detect_language: bool = True
+    highlight_inline_code: bool = True
+    show_line_numbers: bool = True
+    wrap_long_lines: bool = False
     
 class SystemStats(BaseModel):
     """System statistics"""
@@ -3137,6 +3187,371 @@ async def get_formatting_stats():
         "total_formatted": total,
         "avg_improvement_score": round(avg_score, 3),
         "most_common_improvements": [{"type": k, "count": v} for k, v in most_common]
+    }
+
+# Syntax Highlighting Functions
+def detect_language_advanced(code: str, hint: str = "") -> CodeLanguage:
+    """Advanced language detection with confidence scoring"""
+    
+    code_lower = code.lower().strip()
+    confidence = 0.0
+    language = "text"
+    aliases = []
+    extension = ""
+    
+    # If hint provided, use it
+    if hint:
+        hint_lower = hint.lower()
+        lang_map = {
+            "python": ("python", ["py", "python3"], ".py", 0.95),
+            "javascript": ("javascript", ["js", "jsx"], ".js", 0.95),
+            "typescript": ("typescript", ["ts", "tsx"], ".ts", 0.95),
+            "java": ("java", [], ".java", 0.95),
+            "csharp": ("csharp", ["cs", "c#"], ".cs", 0.95),
+            "c": ("c", [], ".c", 0.95),
+            "cpp": ("cpp", ["c++"], ".cpp", 0.95),
+            "go": ("go", ["golang"], ".go", 0.95),
+            "rust": ("rust", ["rs"], ".rs", 0.95),
+            "php": ("php", [], ".php", 0.95),
+            "ruby": ("ruby", ["rb"], ".rb", 0.95),
+            "swift": ("swift", [], ".swift", 0.95),
+            "kotlin": ("kotlin", ["kt"], ".kt", 0.95),
+            "bash": ("bash", ["sh", "shell"], ".sh", 0.95),
+            "sql": ("sql", [], ".sql", 0.95),
+            "html": ("html", [], ".html", 0.95),
+            "css": ("css", [], ".css", 0.95),
+            "json": ("json", [], ".json", 0.95),
+            "yaml": ("yaml", ["yml"], ".yaml", 0.95),
+            "xml": ("xml", [], ".xml", 0.95),
+            "markdown": ("markdown", ["md"], ".md", 0.95)
+        }
+        
+        for key, (lang, alias, ext, conf) in lang_map.items():
+            if hint_lower in [key] + alias:
+                return CodeLanguage(language=lang, confidence=conf, aliases=alias, file_extension=ext)
+    
+    # Pattern-based detection
+    patterns = []
+    
+    # Python
+    if any(word in code_lower for word in ["def ", "import ", "from ", "class ", "print(", "__init__", "self."]):
+        patterns.append(("python", 0.9, ["py", "python3"], ".py"))
+    
+    # JavaScript/TypeScript
+    if any(word in code for word in ["function ", "const ", "let ", "var ", "=>", "console.log"]):
+        if "interface " in code or ": string" in code or ": number" in code:
+            patterns.append(("typescript", 0.9, ["ts", "tsx"], ".ts"))
+        else:
+            patterns.append(("javascript", 0.85, ["js", "jsx"], ".js"))
+    
+    # Java
+    if "public class " in code or "private class " in code:
+        if "System.out.println" in code:
+            patterns.append(("java", 0.95, [], ".java"))
+        else:
+            patterns.append(("java", 0.8, [], ".java"))
+    
+    # C#
+    if "namespace " in code or "using System" in code:
+        patterns.append(("csharp", 0.9, ["cs", "c#"], ".cs"))
+    
+    # C/C++
+    if "#include" in code:
+        if "std::" in code or "cout <<" in code or "vector<" in code:
+            patterns.append(("cpp", 0.9, ["c++"], ".cpp"))
+        else:
+            patterns.append(("c", 0.85, [], ".c"))
+    
+    # Go
+    if "package " in code or "func " in code_lower:
+        if "fmt." in code or "import (" in code:
+            patterns.append(("go", 0.95, ["golang"], ".go"))
+        else:
+            patterns.append(("go", 0.75, ["golang"], ".go"))
+    
+    # Rust
+    if "fn " in code_lower or "let mut" in code_lower:
+        patterns.append(("rust", 0.9, ["rs"], ".rs"))
+    
+    # PHP
+    if "<?php" in code or "$_" in code:
+        patterns.append(("php", 0.95, [], ".php"))
+    
+    # Ruby
+    if any(word in code_lower for word in ["def ", "end\n", "puts ", "require "]) and "class " in code:
+        patterns.append(("ruby", 0.8, ["rb"], ".rb"))
+    
+    # Bash
+    if code.startswith("#!/bin/bash") or code.startswith("#!/bin/sh"):
+        patterns.append(("bash", 0.95, ["sh", "shell"], ".sh"))
+    elif any(word in code for word in ["echo ", "chmod ", "mkdir ", "export "]):
+        patterns.append(("bash", 0.7, ["sh", "shell"], ".sh"))
+    
+    # SQL
+    if any(word in code_lower for word in ["select ", "from ", "where ", "insert into", "update ", "delete from"]):
+        patterns.append(("sql", 0.9, [], ".sql"))
+    
+    # HTML
+    if "<!DOCTYPE" in code or "<html" in code_lower or "<div" in code_lower:
+        patterns.append(("html", 0.9, [], ".html"))
+    
+    # CSS
+    if "{" in code and "}" in code and ":" in code:
+        if any(word in code_lower for word in ["color:", "background:", "margin:", "padding:", "font-"]):
+            patterns.append(("css", 0.85, [], ".css"))
+    
+    # JSON
+    if code.strip().startswith("{") and code.strip().endswith("}"):
+        if '"' in code and ":" in code:
+            patterns.append(("json", 0.8, [], ".json"))
+    
+    # YAML
+    if ":" in code and not "{" in code:
+        if code_lower.startswith(("version:", "name:", "services:", "apiVersion:")):
+            patterns.append(("yaml", 0.85, ["yml"], ".yaml"))
+    
+    # XML
+    if code.strip().startswith("<?xml") or (code.strip().startswith("<") and code.strip().endswith(">")):
+        patterns.append(("xml", 0.85, [], ".xml"))
+    
+    # Markdown
+    if any(marker in code for marker in ["# ", "## ", "```", "**", "- [", "]("]):
+        patterns.append(("markdown", 0.75, ["md"], ".md"))
+    
+    # Select best match
+    if patterns:
+        patterns.sort(key=lambda x: x[1], reverse=True)
+        language, confidence, aliases, extension = patterns[0]
+    else:
+        language, confidence, aliases, extension = "text", 0.3, [], ".txt"
+    
+    return CodeLanguage(
+        language=language,
+        confidence=confidence,
+        aliases=aliases,
+        file_extension=extension
+    )
+
+def extract_code_blocks(text: str) -> List[CodeBlock]:
+    """Extract all code blocks from text"""
+    blocks = []
+    
+    if "```" not in text:
+        return blocks
+    
+    parts = text.split("```")
+    current_line = 1
+    
+    for i, part in enumerate(parts):
+        if i % 2 == 1:  # Inside code block
+            lines = part.split('\n')
+            
+            # First line might be language hint
+            language_hint = ""
+            code_start = 0
+            if lines[0].strip() and len(lines[0].strip()) < 20:
+                language_hint = lines[0].strip()
+                code_start = 1
+            
+            code = '\n'.join(lines[code_start:])
+            
+            # Detect language
+            detected_lang = detect_language_advanced(code, language_hint)
+            
+            # Count lines
+            line_count = len(lines) - code_start
+            
+            # Check for comments
+            has_comments = any(marker in code for marker in ["//", "#", "/*", "<!--", "'''", '"""'])
+            
+            # Check for imports
+            has_imports = any(word in code.lower() for word in ["import ", "require ", "include ", "using "])
+            
+            # Estimate complexity
+            complexity = "simple"
+            if line_count > 50 or code.count('\n') > 50:
+                complexity = "complex"
+            elif line_count > 20 or has_imports:
+                complexity = "moderate"
+            
+            blocks.append(CodeBlock(
+                code=code,
+                language=detected_lang,
+                line_start=current_line,
+                line_end=current_line + line_count,
+                has_comments=has_comments,
+                has_imports=has_imports,
+                complexity=complexity
+            ))
+            
+            current_line += line_count
+        else:
+            current_line += part.count('\n')
+    
+    return blocks
+
+def highlight_code(code: str, language: str, theme: HighlightTheme = HighlightTheme.VS_DARK) -> HighlightedCode:
+    """Add syntax highlighting metadata to code"""
+    
+    if not app_state.syntax_highlight_config.enabled:
+        return HighlightedCode(
+            original=code,
+            language=language,
+            theme=theme,
+            line_count=code.count('\n') + 1
+        )
+    
+    # Detect language if needed
+    if app_state.syntax_highlight_config.auto_detect_language:
+        detected = detect_language_advanced(code, language)
+        language = detected.language
+    
+    # Simple token identification (basic patterns)
+    tokens = []
+    
+    # Keywords by language
+    keywords_map = {
+        "python": ["def", "class", "import", "from", "return", "if", "else", "elif", "for", "while", "try", "except", "with", "as", "pass", "break", "continue", "lambda", "yield", "async", "await"],
+        "javascript": ["function", "const", "let", "var", "return", "if", "else", "for", "while", "try", "catch", "finally", "async", "await", "class", "extends", "import", "export"],
+        "java": ["public", "private", "protected", "class", "interface", "extends", "implements", "return", "if", "else", "for", "while", "try", "catch", "finally", "new", "void", "int", "String"],
+        "go": ["func", "package", "import", "return", "if", "else", "for", "range", "defer", "go", "chan", "var", "const", "type", "struct", "interface"],
+        "rust": ["fn", "let", "mut", "pub", "mod", "use", "return", "if", "else", "for", "while", "loop", "match", "struct", "enum", "impl", "trait"]
+    }
+    
+    keywords = keywords_map.get(language, [])
+    
+    # Simple tokenization (just for metadata)
+    for keyword in keywords:
+        if keyword in code:
+            tokens.append({"type": "keyword", "value": keyword})
+    
+    # Check for syntax errors (very basic)
+    has_errors = False
+    if language == "python":
+        # Check for common Python syntax issues
+        lines = code.split('\n')
+        for line in lines:
+            if line.strip() and not line.strip().startswith('#'):
+                if line.count('(') != line.count(')'):
+                    has_errors = True
+                if line.count('[') != line.count(']'):
+                    has_errors = True
+    
+    highlighted = HighlightedCode(
+        original=code,
+        language=language,
+        theme=theme,
+        tokens=tokens,
+        line_count=code.count('\n') + 1,
+        has_syntax_errors=has_errors
+    )
+    
+    # Store
+    app_state.highlighted_code.append(highlighted)
+    
+    # Keep only last 100
+    if len(app_state.highlighted_code) > 100:
+        app_state.highlighted_code = app_state.highlighted_code[-100:]
+    
+    return highlighted
+
+# Syntax Highlighting API Endpoints
+@app.post("/syntax/highlight")
+async def highlight_code_endpoint(
+    code: str,
+    language: str = "auto",
+    theme: HighlightTheme = HighlightTheme.VS_DARK
+):
+    """Highlight code with syntax"""
+    highlighted = highlight_code(code, language, theme)
+    return highlighted
+
+@app.post("/syntax/detect")
+async def detect_language_endpoint(code: str, hint: str = ""):
+    """Detect code language"""
+    detected = detect_language_advanced(code, hint)
+    return detected
+
+@app.post("/syntax/extract")
+async def extract_code_blocks_endpoint(text: str):
+    """Extract all code blocks from text"""
+    blocks = extract_code_blocks(text)
+    return {"blocks": blocks, "count": len(blocks)}
+
+@app.get("/syntax/config")
+async def get_syntax_config():
+    """Get syntax highlighting configuration"""
+    return app_state.syntax_highlight_config
+
+@app.put("/syntax/config")
+async def update_syntax_config(config: SyntaxHighlightConfig):
+    """Update syntax highlighting configuration"""
+    app_state.syntax_highlight_config = config
+    logger.info("updated_syntax_config", enabled=config.enabled, theme=config.default_theme)
+    return config
+
+@app.get("/syntax/themes")
+async def get_available_themes():
+    """Get available syntax themes"""
+    return {
+        "themes": [theme.value for theme in HighlightTheme],
+        "default": app_state.syntax_highlight_config.default_theme
+    }
+
+@app.get("/syntax/languages")
+async def get_supported_languages():
+    """Get supported languages"""
+    return {
+        "languages": [
+            {"name": "Python", "id": "python", "extensions": [".py"]},
+            {"name": "JavaScript", "id": "javascript", "extensions": [".js", ".jsx"]},
+            {"name": "TypeScript", "id": "typescript", "extensions": [".ts", ".tsx"]},
+            {"name": "Java", "id": "java", "extensions": [".java"]},
+            {"name": "C#", "id": "csharp", "extensions": [".cs"]},
+            {"name": "C", "id": "c", "extensions": [".c", ".h"]},
+            {"name": "C++", "id": "cpp", "extensions": [".cpp", ".hpp"]},
+            {"name": "Go", "id": "go", "extensions": [".go"]},
+            {"name": "Rust", "id": "rust", "extensions": [".rs"]},
+            {"name": "PHP", "id": "php", "extensions": [".php"]},
+            {"name": "Ruby", "id": "ruby", "extensions": [".rb"]},
+            {"name": "Swift", "id": "swift", "extensions": [".swift"]},
+            {"name": "Kotlin", "id": "kotlin", "extensions": [".kt"]},
+            {"name": "Bash", "id": "bash", "extensions": [".sh"]},
+            {"name": "SQL", "id": "sql", "extensions": [".sql"]},
+            {"name": "HTML", "id": "html", "extensions": [".html"]},
+            {"name": "CSS", "id": "css", "extensions": [".css"]},
+            {"name": "JSON", "id": "json", "extensions": [".json"]},
+            {"name": "YAML", "id": "yaml", "extensions": [".yaml", ".yml"]},
+            {"name": "XML", "id": "xml", "extensions": [".xml"]},
+            {"name": "Markdown", "id": "markdown", "extensions": [".md"]}
+        ]
+    }
+
+@app.get("/syntax/stats")
+async def get_syntax_stats():
+    """Get syntax highlighting statistics"""
+    if not app_state.highlighted_code:
+        return {
+            "total_highlighted": 0,
+            "languages_used": {},
+            "avg_line_count": 0
+        }
+    
+    total = len(app_state.highlighted_code)
+    
+    # Count languages
+    lang_counts = {}
+    total_lines = 0
+    for hc in app_state.highlighted_code:
+        lang_counts[hc.language] = lang_counts.get(hc.language, 0) + 1
+        total_lines += hc.line_count
+    
+    avg_lines = total_lines / total if total > 0 else 0
+    
+    return {
+        "total_highlighted": total,
+        "languages_used": lang_counts,
+        "avg_line_count": round(avg_lines, 1)
     }
 
 # Model Ensemble Management Endpoints
