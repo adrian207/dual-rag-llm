@@ -22,8 +22,11 @@ import structlog
 import httpx
 import redis.asyncio as aioredis
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from sse_starlette.sse import EventSourceResponse
 from github import Github, GithubException
 
 from llama_index.core import VectorStoreIndex, Settings, StorageContext
@@ -392,9 +395,24 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Dual RAG LLM System with Web Tools",
     description="Intelligent routing with caching, web search, and GitHub integration",
-    version="1.1.0",
+    version="1.2.0",
     lifespan=lifespan
 )
+
+# Enable CORS for web UI
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify your domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount static files for web UI
+try:
+    app.mount("/ui", StaticFiles(directory="/app/ui", html=True), name="ui")
+except RuntimeError:
+    logger.warning("ui_directory_not_found", path="/app/ui")
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -490,9 +508,176 @@ async def clear_cache():
         logger.error("cache_clear_error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
+async def generate_streaming_response(q: Query):
+    """Generate streaming response for query"""
+    try:
+        # Determine routing
+        model_name, source_type = get_model_for_extension(q.file_ext)
+        is_ms = source_type == "Microsoft"
+        
+        # Send initial status
+        yield {
+            "event": "status",
+            "data": json.dumps({"status": "starting", "model": model_name, "source": source_type})
+        }
+        
+        # Check cache
+        cache_key = generate_cache_key(q.question, q.file_ext, model_name)
+        cached_response = await get_cached_response(cache_key)
+        
+        if cached_response:
+            yield {
+                "event": "cached",
+                "data": json.dumps(cached_response)
+            }
+            yield {
+                "event": "done",
+                "data": json.dumps({"cached": True})
+            }
+            return
+        
+        # Use tools if requested
+        tools_used = []
+        tool_results = []
+        
+        if q.use_web_search:
+            yield {
+                "event": "status",
+                "data": json.dumps({"status": "searching_web"})
+            }
+            web_result = await search_web(q.question)
+            if web_result.count > 0:
+                tools_used.append("web_search")
+                tool_results.append(web_result)
+                yield {
+                    "event": "tool",
+                    "data": json.dumps({"tool": "web_search", "count": web_result.count})
+                }
+        
+        if q.use_github:
+            yield {
+                "event": "status",
+                "data": json.dumps({"status": "searching_github"})
+            }
+            github_result = await search_github(q.question, q.github_repo)
+            if github_result.count > 0:
+                tools_used.append("github")
+                tool_results.append(github_result)
+                yield {
+                    "event": "tool",
+                    "data": json.dumps({"tool": "github", "count": github_result.count})
+                }
+        
+        # Ensure model available
+        yield {
+            "event": "status",
+            "data": json.dumps({"status": "loading_model"})
+        }
+        model_available = await ensure_model_loaded(model_name)
+        if not model_available:
+            yield {
+                "event": "error",
+                "data": json.dumps({"error": f"Model {model_name} not available"})
+            }
+            return
+        
+        # Load RAG index
+        yield {
+            "event": "status",
+            "data": json.dumps({"status": "retrieving_context"})
+        }
+        index = load_index(is_ms)
+        if index is None:
+            yield {
+                "event": "error",
+                "data": json.dumps({"error": f"Index for {source_type} not available"})
+            }
+            return
+        
+        app_state.tool_usage["rag"] += 1
+        
+        # Retrieve context
+        retriever = index.as_retriever(similarity_top_k=3)
+        nodes = retriever.retrieve(q.question)
+        
+        context_parts = []
+        if nodes:
+            context_parts = [f"[Doc {i+1}]\n{n.text}" for i, n in enumerate(nodes)]
+        
+        # Add tool context
+        for result in tool_results:
+            if result.tool == "web_search":
+                for r in result.results[:3]:
+                    context_parts.append(f"[Web] {r['title']}: {r['description']}")
+            elif result.tool == "github":
+                for r in result.results[:3]:
+                    context_parts.append(f"[GitHub] {r['repository']}/{r['path']}")
+        
+        context = "\n\n".join(context_parts) if context_parts else "No context available."
+        
+        # Generate streaming response from LLM
+        yield {
+            "event": "status",
+            "data": json.dumps({"status": "generating", "chunks": len(nodes)})
+        }
+        
+        llm = Ollama(model=model_name, request_timeout=120.0, base_url=OLLAMA_API)
+        
+        prompt = f"""Context from documentation and tools:
+{context}
+
+Question: {q.question}
+
+Please provide a detailed answer based on the context above. Include code examples if relevant."""
+        
+        # Stream the LLM response
+        full_answer = ""
+        async for token in llm.astream_complete(prompt):
+            full_answer += token.delta
+            yield {
+                "event": "token",
+                "data": json.dumps({"token": token.delta})
+            }
+        
+        # Cache the complete response
+        result = {
+            "answer": full_answer,
+            "model": model_name,
+            "source": source_type,
+            "chunks_retrieved": len(nodes),
+            "tools_used": tools_used,
+            "tool_results": [tr.dict() for tr in tool_results]
+        }
+        
+        await set_cached_response(cache_key, result)
+        
+        # Send completion
+        yield {
+            "event": "done",
+            "data": json.dumps(result)
+        }
+        
+    except Exception as e:
+        logger.error("streaming_error", error=str(e))
+        yield {
+            "event": "error",
+            "data": json.dumps({"error": str(e)})
+        }
+
+@app.post("/query/stream")
+async def query_stream_endpoint(q: Query):
+    """Streaming query endpoint"""
+    logger.info("stream_query_received", question_length=len(q.question))
+    
+    async def event_generator():
+        async for event in generate_streaming_response(q):
+            yield f"event: {event['event']}\ndata: {event['data']}\n\n"
+    
+    return EventSourceResponse(event_generator())
+
 @app.post("/query", response_model=QueryResponse)
 async def query_endpoint(q: Query):
-    """Main query endpoint with tools"""
+    """Main query endpoint with tools (non-streaming)"""
     start_time = asyncio.get_event_loop().time()
     logger.info("query_received", question_length=len(q.question), file_ext=q.file_ext)
     

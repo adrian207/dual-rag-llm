@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dual RAG LLM System - Interactive Interface</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <h1>🤖 Dual RAG LLM System</h1>
+                <p class="subtitle">Intelligent AI Assistant with Web Tools</p>
+            </div>
+            <div class="stats" id="stats">
+                <span class="stat">
+                    <span class="stat-label">Cache Hit Rate:</span>
+                    <span class="stat-value" id="cacheHitRate">--</span>
+                </span>
+                <span class="stat">
+                    <span class="stat-label">Status:</span>
+                    <span class="stat-value status-indicator" id="status">Connecting...</span>
+                </span>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <div class="chat-container">
+                <div class="messages" id="messages">
+                    <div class="welcome-message">
+                        <h2>Welcome! 👋</h2>
+                        <p>Ask me anything about coding, development, or technical topics.</p>
+                        <div class="features">
+                            <span class="feature">📚 Documentation Search</span>
+                            <span class="feature">🌐 Web Search</span>
+                            <span class="feature">🐙 GitHub Integration</span>
+                            <span class="feature">⚡ Smart Caching</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="input-container">
+                    <div class="tools">
+                        <label class="tool-option">
+                            <input type="checkbox" id="useWebSearch">
+                            <span>🌐 Web Search</span>
+                        </label>
+                        <label class="tool-option">
+                            <input type="checkbox" id="useGitHub">
+                            <span>🐙 GitHub</span>
+                        </label>
+                        <select id="fileExt" class="file-ext-select">
+                            <option value="">Auto-detect</option>
+                            <option value=".py">Python (.py)</option>
+                            <option value=".js">JavaScript (.js)</option>
+                            <option value=".ts">TypeScript (.ts)</option>
+                            <option value=".cs">C# (.cs)</option>
+                            <option value=".ps1">PowerShell (.ps1)</option>
+                            <option value=".yaml">YAML (.yaml)</option>
+                            <option value=".json">JSON (.json)</option>
+                            <option value=".md">Markdown (.md)</option>
+                        </select>
+                    </div>
+                    <div class="input-row">
+                        <textarea 
+                            id="questionInput" 
+                            placeholder="Ask a question... (e.g., 'How do I implement Redis caching in Python?')"
+                            rows="3"
+                        ></textarea>
+                        <button id="sendBtn" class="send-btn">
+                            <span>Send</span>
+                            <span class="shortcut">⏎</span>
+                        </button>
+                    </div>
+                    <div class="github-repo-container" id="githubRepoContainer" style="display: none;">
+                        <input 
+                            type="text" 
+                            id="githubRepo" 
+                            placeholder="Optional: user/repo (e.g., 'fastapi/fastapi')"
+                            class="github-repo-input"
+                        >
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar">
+                <div class="sidebar-section">
+                    <h3>💡 Quick Examples</h3>
+                    <div class="examples">
+                        <button class="example-btn" data-question="How do I create an async function in Python?" data-ext=".py">
+                            Python async function
+                        </button>
+                        <button class="example-btn" data-question="What are the latest C# 12 features?" data-ext=".cs" data-web="true">
+                            C# 12 features
+                        </button>
+                        <button class="example-btn" data-question="FastAPI middleware example" data-ext=".py" data-github="true">
+                            FastAPI middleware
+                        </button>
+                        <button class="example-btn" data-question="How to handle errors in PowerShell?" data-ext=".ps1">
+                            PowerShell errors
+                        </button>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>📊 System Info</h3>
+                    <div class="system-info" id="systemInfo">
+                        <div class="info-item">
+                            <span class="info-label">Total Queries:</span>
+                            <span class="info-value" id="totalQueries">0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Cache Hits:</span>
+                            <span class="info-value" id="cacheHits">0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Web Searches:</span>
+                            <span class="info-value" id="webSearches">0</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">GitHub Queries:</span>
+                            <span class="info-value" id="githubQueries">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <h3>⚙️ Actions</h3>
+                    <button class="action-btn" id="clearCacheBtn">
+                        Clear Cache
+                    </button>
+                    <button class="action-btn secondary" id="refreshStatsBtn">
+                        Refresh Stats
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
+

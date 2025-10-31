@@ -13,12 +13,15 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create necessary directories
-RUN mkdir -p /app/data /app/indexes /app/logs
+RUN mkdir -p /app/data /app/indexes /app/logs /app/ui
 
 # Copy application code
 COPY rag_dual.py .
 COPY ingest_docs.py .
 COPY entrypoint.sh .
+
+# Copy UI files
+COPY ui /app/ui
 
 # Make entrypoint executable
 RUN chmod +x entrypoint.sh
