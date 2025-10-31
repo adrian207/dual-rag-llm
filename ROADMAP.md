@@ -70,7 +70,7 @@ Future development plans and enhancement ideas for the dual RAG system.
 **Target:** Q3 2026
 
 ### Model Management
-- [ ] Dynamic model switching
+- [x] Dynamic model switching ✅ **(v1.3.0 - Completed)**
 - [ ] Model A/B testing framework
 - [ ] Custom model fine-tuning pipeline
 - [ ] Model ensemble strategies

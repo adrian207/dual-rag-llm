@@ -12,6 +12,8 @@ const sendBtn = document.getElementById('sendBtn');
 const fileExtSelect = document.getElementById('fileExt');
 const useWebSearchCheckbox = document.getElementById('useWebSearch');
 const useGitHubCheckbox = document.getElementById('useGitHub');
+const compareModelsCheckbox = document.getElementById('compareModels');
+const modelSelect = document.getElementById('modelSelect');
 const githubRepoInput = document.getElementById('githubRepo');
 const githubRepoContainer = document.getElementById('githubRepoContainer');
 const statusIndicator = document.getElementById('status');
@@ -28,17 +30,35 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function setupEventListeners() {
-    sendBtn.addEventListener('click', sendQuery);
+    sendBtn.addEventListener('click', () => {
+        if (compareModelsCheckbox.checked) {
+            compareModels();
+        } else {
+            sendQuery();
+        }
+    });
     
     questionInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            sendQuery();
+            if (compareModelsCheckbox.checked) {
+                compareModels();
+            } else {
+                sendQuery();
+            }
         }
     });
     
     useGitHubCheckbox.addEventListener('change', (e) => {
         githubRepoContainer.style.display = e.target.checked ? 'block' : 'none';
+    });
+    
+    compareModelsCheckbox.addEventListener('change', (e) => {
+        if (e.target.checked) {
+            sendBtn.textContent = '🔄 Compare Models';
+        } else {
+            sendBtn.textContent = '📤 Send';
+        }
     });
     
     clearCacheBtn.addEventListener('click', clearCache);
@@ -95,8 +115,45 @@ async function fetchStats() {
         document.getElementById('cacheHits').textContent = data.cache.hits;
         document.getElementById('webSearches').textContent = data.tools.web_search;
         document.getElementById('githubQueries').textContent = data.tools.github;
+        
+        // Display model performance if available
+        if (data.model_performance && Object.keys(data.model_performance).length > 0) {
+            displayModelPerformance(data.model_performance);
+        }
     } catch (error) {
         console.error('Failed to fetch stats:', error);
+    }
+}
+
+function displayModelPerformance(performance) {
+    let perfContainer = document.getElementById('modelPerformance');
+    if (!perfContainer) {
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar) {
+            perfContainer = document.createElement('div');
+            perfContainer.id = 'modelPerformance';
+            perfContainer.style.cssText = 'margin-top: 1rem; padding: 1rem; background: var(--bg-tertiary); border-radius: 0.5rem;';
+            perfContainer.innerHTML = '<h4 style="margin-bottom: 0.5rem;">📊 Model Performance</h4><div id="perfList"></div>';
+            sidebar.appendChild(perfContainer);
+        }
+    }
+    
+    const perfList = document.getElementById('perfList');
+    if (perfList) {
+        const sortedModels = Object.entries(performance).sort((a, b) => 
+            (b[1].avg_tokens_per_sec || 0) - (a[1].avg_tokens_per_sec || 0)
+        );
+        
+        perfList.innerHTML = sortedModels.map(([model, stats]) => `
+            <div style="margin: 0.5rem 0; padding: 0.5rem; background: var(--bg-secondary); border-radius: 0.5rem; font-size: 0.85rem;">
+                <div style="font-weight: 600; margin-bottom: 0.25rem;">${model.split(':')[0]}</div>
+                <div style="color: var(--text-secondary);">
+                    ⚡ ${stats.avg_tokens_per_sec.toFixed(1)} tok/s | 
+                    ⏱️ ${stats.avg_response_time.toFixed(1)}s | 
+                    📊 ${stats.queries} queries
+                </div>
+            </div>
+        `).join('');
     }
 }
 
@@ -144,6 +201,11 @@ function sendQuery() {
         use_web_search: useWebSearchCheckbox.checked,
         use_github: useGitHubCheckbox.checked
     };
+    
+    // Add model override if selected
+    if (modelSelect.value) {
+        requestBody.model_override = modelSelect.value;
+    }
     
     if (useGitHubCheckbox.checked && githubRepoInput.value) {
         requestBody.github_repo = githubRepoInput.value;
@@ -264,13 +326,60 @@ function handleStreamEvent(event, data, contentElement, metaElement, statusEleme
             statusElement.style.display = 'none';
             formatMessageContent(contentElement);
             updateMetadata(metaElement, data);
+            
+            // Add "try another model" button after response is complete
+            if (data.model && !data.cached) {
+                const messageElement = contentElement.closest('.message');
+                const question = document.querySelector('.message.user:last-of-type .message-text')?.textContent || '';
+                addTryAnotherModelButton(messageElement, question, data.model);
+            }
+            
             callback(contentElement.textContent);
             break;
         
         case 'error':
             statusElement.textContent = `❌ Error: ${data.error}`;
             statusElement.style.borderLeftColor = 'var(--error)';
+            
+            // Implement automatic fallback if model not available
+            if (data.error && data.error.includes('not available') && !data.fallback_attempted) {
+                statusElement.textContent += ' - Trying fallback model...';
+                const fallbackModel = modelSelect.value;
+                if (fallbackModel) {
+                    attemptFallback(fallbackModel);
+                }
+            }
             break;
+    }
+}
+
+async function attemptFallback(failedModel) {
+    // Fallback chain
+    const fallbackChain = {
+        'qwen2.5-coder:32b-q4_K_M': 'qwen2.5-coder:14b',
+        'qwen2.5-coder:14b': 'qwen2.5-coder:7b',
+        'deepseek-coder-v2:33b-q4_K_M': 'deepseek-coder-v2:16b',
+        'deepseek-coder-v2:16b': 'codellama:13b',
+        'codellama:34b': 'codellama:13b',
+        'codellama:13b': 'llama3.1:8b',
+        'llama3.1:70b': 'llama3.1:8b'
+    };
+    
+    const fallbackModel = fallbackChain[failedModel];
+    if (fallbackModel) {
+        showNotification(`Model ${failedModel} unavailable. Falling back to ${fallbackModel}...`, 'warning');
+        modelSelect.value = fallbackModel;
+        
+        // Re-trigger the query after a short delay
+        setTimeout(() => {
+            const lastQuestion = document.querySelector('.message.user:last-of-type .message-text')?.textContent;
+            if (lastQuestion) {
+                questionInput.value = lastQuestion;
+                sendQuery();
+            }
+        }, 1000);
+    } else {
+        showNotification(`No fallback available for ${failedModel}. Please select a different model.`, 'error');
     }
 }
 
@@ -380,5 +489,191 @@ function escapeHtml(text) {
 function showNotification(message, type = 'info') {
     // Simple notification (can be enhanced with a proper notification library)
     alert(message);
+}
+
+// Model Comparison
+async function compareModels() {
+    const question = questionInput.value.trim();
+    if (!question) return;
+    
+    // Disable input
+    sendBtn.disabled = true;
+    questionInput.disabled = true;
+    
+    // Add user message
+    addUserMessage(question);
+    
+    // Clear input
+    questionInput.value = '';
+    
+    // Prepare request
+    const requestBody = {
+        question: question,
+        file_ext: fileExtSelect.value,
+        use_web_search: useWebSearchCheckbox.checked,
+        use_github: useGitHubCheckbox.checked,
+        compare_models: true
+    };
+    
+    if (modelSelect.value) {
+        requestBody.model_override = modelSelect.value;
+    }
+    
+    if (useGitHubCheckbox.checked && githubRepoInput.value) {
+        requestBody.github_repo = githubRepoInput.value;
+    }
+    
+    // Create comparison container
+    const comparisonContainer = document.createElement('div');
+    comparisonContainer.className = 'message assistant';
+    comparisonContainer.innerHTML = `
+        <div class="message-avatar">🤖</div>
+        <div class="message-content">
+            <div class="message-status">🔄 Comparing models...</div>
+            <div class="comparison-container"></div>
+        </div>
+    `;
+    
+    messagesContainer.appendChild(comparisonContainer);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    
+    const statusElement = comparisonContainer.querySelector('.message-status');
+    const comparisonResults = comparisonContainer.querySelector('.comparison-container');
+    
+    // Make API call
+    try {
+        const response = await fetch(`${API_BASE}/query/compare`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        });
+        
+        const data = await response.json();
+        statusElement.textContent = `✅ Compared ${data.comparison_count} models`;
+        
+        // Display results side-by-side
+        data.results.forEach((result, index) => {
+            const resultDiv = document.createElement('div');
+            resultDiv.className = 'comparison-response';
+            
+            // Highlight fastest response
+            if (index === 0 || result.response_time === Math.min(...data.results.map(r => r.response_time || Infinity))) {
+                if (!result.error) resultDiv.classList.add('winner');
+            }
+            
+            const perfMetrics = result.performance || {};
+            const perfDisplay = perfMetrics.avg_tokens_per_sec ? 
+                `<div class="metric">⚡ ${perfMetrics.avg_tokens_per_sec.toFixed(1)} tok/s avg</div>` : '';
+            
+            resultDiv.innerHTML = `
+                <div class="comparison-header">
+                    <div class="model-badge">${result.model.split(':')[0]}</div>
+                    <div class="performance-metrics">
+                        <div class="metric">⏱️ ${result.response_time}s</div>
+                        ${perfDisplay}
+                        <div class="metric">📄 ${result.chunks_retrieved || 0} docs</div>
+                    </div>
+                </div>
+                <div class="comparison-answer">
+                    ${result.error ? `<p class="error">❌ ${result.error}</p>` : `<p>${escapeHtml(result.answer.substring(0, 500))}${result.answer.length > 500 ? '...' : ''}</p>`}
+                </div>
+                <div class="message-actions">
+                    <button class="action-button expand-btn" data-full-answer="${escapeHtml(result.answer || '')}" data-model="${result.model}">
+                        📖 View Full Response
+                    </button>
+                    <button class="action-button use-model-btn" data-model="${result.model}">
+                        ✅ Use This Model
+                    </button>
+                </div>
+            `;
+            
+            comparisonResults.appendChild(resultDiv);
+        });
+        
+        // Add event listeners for expand and use buttons
+        comparisonContainer.querySelectorAll('.expand-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const fullAnswer = btn.dataset.fullAnswer;
+                const model = btn.dataset.model;
+                showFullAnswer(model, fullAnswer);
+            });
+        });
+        
+        comparisonContainer.querySelectorAll('.use-model-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                modelSelect.value = btn.dataset.model;
+                showNotification(`Model set to: ${btn.dataset.model}`, 'success');
+            });
+        });
+        
+    } catch (error) {
+        console.error('Comparison error:', error);
+        statusElement.textContent = `❌ Error: ${error.message}`;
+    } finally {
+        sendBtn.disabled = false;
+        questionInput.disabled = false;
+        questionInput.focus();
+        fetchStats();
+    }
+}
+
+function showFullAnswer(model, answer) {
+    const modal = document.createElement('div');
+    modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:1000;padding:2rem;';
+    modal.innerHTML = `
+        <div style="background:var(--bg-secondary);padding:2rem;border-radius:1rem;max-width:900px;max-height:80vh;overflow-y:auto;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                <h3 style="margin:0;">Full Response - ${model}</h3>
+                <button style="background:var(--error);color:white;border:none;padding:0.5rem 1rem;border-radius:0.5rem;cursor:pointer;">Close</button>
+            </div>
+            <pre style="white-space:pre-wrap;word-wrap:break-word;">${escapeHtml(answer)}</pre>
+        </div>
+    `;
+    document.body.appendChild(modal);
+    
+    modal.querySelector('button').addEventListener('click', () => {
+        document.body.removeChild(modal);
+    });
+    
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            document.body.removeChild(modal);
+        }
+    });
+}
+
+// Add "Try Another Model" button to assistant messages
+function addTryAnotherModelButton(messageElement, question, currentModel) {
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'message-actions';
+    actionsDiv.innerHTML = `
+        <button class="action-button try-another-btn">
+            🔄 Try Another Model
+        </button>
+        <button class="action-button compare-btn">
+            📊 Compare Models
+        </button>
+    `;
+    
+    messageElement.querySelector('.message-content').appendChild(actionsDiv);
+    
+    actionsDiv.querySelector('.try-another-btn').addEventListener('click', () => {
+        // Set a different model and re-run query
+        const models = ['qwen2.5-coder:32b-q4_K_M', 'deepseek-coder-v2:33b-q4_K_M', 'codellama:34b'];
+        const otherModels = models.filter(m => m !== currentModel);
+        const nextModel = otherModels[0];
+        
+        modelSelect.value = nextModel;
+        questionInput.value = question;
+        sendQuery();
+    });
+    
+    actionsDiv.querySelector('.compare-btn').addEventListener('click', () => {
+        questionInput.value = question;
+        compareModelsCheckbox.checked = true;
+        compareModels();
+    });
 }
 

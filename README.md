@@ -45,6 +45,14 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 
 ## Key Features
 
+### 🔄 Dynamic Model Switching (v1.3.0)
+- **Model Selector**: Choose from 10+ available LLMs (Qwen, DeepSeek, CodeLlama, Llama 3.1)
+- **Model Comparison**: Run parallel queries across multiple models
+- **Performance Tracking**: Real-time metrics (tokens/sec, response time, query count)
+- **Try Another Model**: One-click retry with different models
+- **Automatic Fallback**: Seamless fallback when models unavailable
+- **Side-by-Side Comparison**: Visual comparison with winner highlighting
+
 ### 🚀 Performance (v1.1.0)
 - **Redis caching** - 80-90% faster responses for cached queries (<100ms)
 - **Async/await throughout** - Non-blocking I/O operations
