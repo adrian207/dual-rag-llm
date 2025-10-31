@@ -1,0 +1,96 @@
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "dual-rag-llm.fullname" . }}-backup
+  labels:
+    {{- include "dual-rag-llm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  successfulJobsHistoryLimit: {{ .Values.backup.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.backup.failedJobsHistoryLimit }}
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "dual-rag-llm.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ include "dual-rag-llm.serviceAccountName" . }}
+          
+          initContainers:
+          - name: wait-for-postgres
+            image: postgres:15-alpine
+            command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h {{ include "dual-rag-llm.fullname" . }}-postgresql -p 5432; do
+                echo "Waiting for PostgreSQL..."
+                sleep 2
+              done
+          
+          containers:
+          - name: backup
+            image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+            imagePullPolicy: {{ .Values.image.pullPolicy }}
+            
+            command:
+            - python
+            - -c
+            - |
+              import asyncio
+              from rag.backup import get_backup_manager
+              
+              async def main():
+                  manager = get_backup_manager()
+                  db_config = {
+                      "host": "{{ include "dual-rag-llm.fullname" . }}-postgresql",
+                      "port": "5432",
+                      "database": "{{ .Values.postgresql.auth.database }}",
+                      "user": "{{ .Values.postgresql.auth.username }}",
+                      "password": "{{ .Values.postgresql.auth.password }}"
+                  }
+                  result = await manager.create_backup(db_config)
+                  print(f"Backup completed: {result.id if result else 'FAILED'}")
+              
+              asyncio.run(main())
+            
+            env:
+            - name: BACKUP_DIR
+              value: {{ .Values.backup.backupDir | quote }}
+            - name: BACKUP_RETENTION_DAYS
+              value: {{ .Values.backup.retentionDays | quote }}
+            - name: MAX_BACKUPS
+              value: {{ .Values.backup.maxBackups | quote }}
+            - name: POSTGRES_HOST
+              value: {{ include "dual-rag-llm.fullname" . }}-postgresql
+            - name: POSTGRES_PORT
+              value: "5432"
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.auth.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.auth.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "dual-rag-llm.fullname" . }}-postgresql
+                  key: password
+            
+            volumeMounts:
+            - name: backup-storage
+              mountPath: {{ .Values.backup.backupDir }}
+            
+            resources:
+              {{- toYaml .Values.backup.resources | nindent 14 }}
+          
+          volumes:
+          - name: backup-storage
+            persistentVolumeClaim:
+              claimName: {{ include "dual-rag-llm.fullname" . }}-backup-pvc
+{{- end }}
+

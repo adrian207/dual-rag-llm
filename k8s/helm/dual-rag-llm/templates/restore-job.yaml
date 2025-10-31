@@ -1,0 +1,88 @@
+{{- if .Values.restore.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "dual-rag-llm.fullname" . }}-restore-{{ .Values.restore.backupId }}
+  labels:
+    {{- include "dual-rag-llm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: restore
+spec:
+  template:
+    metadata:
+      labels:
+        {{- include "dual-rag-llm.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: restore
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "dual-rag-llm.serviceAccountName" . }}
+      
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:15-alpine
+        command:
+        - sh
+        - -c
+        - |
+          until pg_isready -h {{ include "dual-rag-llm.fullname" . }}-postgresql -p 5432; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+      
+      containers:
+      - name: restore
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        
+        command:
+        - python
+        - -c
+        - |
+          import asyncio
+          from rag.backup import get_backup_manager
+          
+          async def main():
+              manager = get_backup_manager()
+              db_config = {
+                  "host": "{{ include "dual-rag-llm.fullname" . }}-postgresql",
+                  "port": "5432",
+                  "database": "{{ .Values.postgresql.auth.database }}",
+                  "user": "{{ .Values.postgresql.auth.username }}",
+                  "password": "{{ .Values.postgresql.auth.password }}"
+              }
+              success = await manager.restore_backup("{{ .Values.restore.backupId }}", db_config)
+              print(f"Restore {'completed' if success else 'FAILED'}")
+          
+          asyncio.run(main())
+        
+        env:
+        - name: BACKUP_DIR
+          value: {{ .Values.backup.backupDir | quote }}
+        - name: POSTGRES_HOST
+          value: {{ include "dual-rag-llm.fullname" . }}-postgresql
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_DB
+          value: {{ .Values.postgresql.auth.database | quote }}
+        - name: POSTGRES_USER
+          value: {{ .Values.postgresql.auth.username | quote }}
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "dual-rag-llm.fullname" . }}-postgresql
+              key: password
+        
+        volumeMounts:
+        - name: backup-storage
+          mountPath: {{ .Values.backup.backupDir }}
+        
+        resources:
+          {{- toYaml .Values.restore.resources | nindent 10 }}
+      
+      volumes:
+      - name: backup-storage
+        persistentVolumeClaim:
+          claimName: {{ include "dual-rag-llm.fullname" . }}-backup-pvc
+  
+  backoffLimit: {{ .Values.restore.backoffLimit }}
+{{- end }}
+

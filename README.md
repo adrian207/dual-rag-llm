@@ -1,6 +1,6 @@
 # Dual RAG LLM System
 
-[![Version](https://img.shields.io/badge/version-1.19.0-blue.svg)](https://github.com/adrian207/dual-rag-llm/releases)
+[![Version](https://img.shields.io/badge/version-1.20.0-blue.svg)](https://github.com/adrian207/dual-rag-llm/releases)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/docker-20.10+-blue.svg)](https://www.docker.com/)
@@ -64,6 +64,18 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 ```
 
 ## Key Features
+
+### 🗄️ Operations & Resilience (v1.20.0)
+- **PostgreSQL Vector Database**: Scalable vector storage with pgvector extension
+- **Automated Backup System**: Kubernetes CronJob for scheduled backups (every 6 hours)
+- **Disaster Recovery Automation**: Automated DR procedures with continuous health monitoring
+- **RPO & RTO Targets**: 60-minute RPO, 15-minute RTO with automated recovery
+- **Backup Verification**: SHA-256 checksum validation and integrity checks
+- **DR Scripts**: Comprehensive bash scripts for backup, restore, and DR management
+- **Point-in-Time Recovery**: Transaction log-based recovery capabilities
+- **Backup Retention**: 30-day retention with configurable policies (up to 100 backups)
+- **Health Monitoring**: Continuous monitoring (60-second intervals) of database, backups, and disk space
+- **Automatic Failover**: Intelligent recovery with manual and automatic modes
 
 ### ☸️ Production-Ready Kubernetes Deployment (v1.19.0)
 - **Complete Helm Chart**: Production-grade Helm chart with 15+ templates
@@ -725,17 +737,19 @@ request_timeout = 120.0       # LLM request timeout (seconds)
 
 ### 📚 Complete Guides
 
-- **[CHANGELOG.md](CHANGELOG.md)** - Complete release history for all 12 versions
+- **[CHANGELOG.md](CHANGELOG.md)** - Complete release history for all 20 versions
 - **[User Guide](docs/USER_GUIDE.md)** - Comprehensive 870+ line user manual
 - **[API Reference](docs/API_REFERENCE.md)** - Complete API documentation (90+ endpoints)
 - **[Contributing Guide](CONTRIBUTING.md)** - How to contribute
 - **[Roadmap](ROADMAP.md)** - Future features and plans
+- **[Disaster Recovery Guide](docs/DISASTER_RECOVERY.md)** - 690+ line comprehensive DR procedures
 
 ### 🚀 Deployment Guides
 
 - **[Quick Start](QUICKSTART.md)** - Get running in 5 minutes
 - **[Azure Deployment](azure/README.md)** - Complete Azure guide
 - **[AKS Guide](azure/AKS_DEPLOYMENT.md)** - Kubernetes deployment
+- **[Kubernetes Guide](k8s/README.md)** - Production Kubernetes deployment
 - **[PowerShell Scripts](azure/POWERSHELL_DEPLOYMENT.md)** - Windows deployment
 - **[Model Ensembles](docs/MODEL_ENSEMBLES.md)** - Ensemble strategies guide
 
@@ -747,20 +761,18 @@ request_timeout = 120.0       # LLM request timeout (seconds)
 
 ## Version History
 
-**Current Version:** 1.19.0 (October 31, 2024)
+**Current Version:** 1.20.0 (October 31, 2024)
 
 See [CHANGELOG.md](CHANGELOG.md) for complete release notes.
 
 **Recent Releases:**
+- **v1.20.0** - Operations & Resilience (PostgreSQL, backup, DR automation)
 - **v1.19.0** - Kubernetes Deployment (Helm charts, auto-scaling, HA, GPU support)
 - **v1.18.0** - Cost Tracking & Budget Management (forecasting, alerts, analytics)
 - **v1.17.0** - Enterprise Admin Dashboard (comprehensive management interface)
 - **v1.16.0** - Usage Analytics (comprehensive tracking, insights, time-series data)
-- **v1.15.0** - Data Encryption (AES-256, TLS 1.2+, key management)
 
-[View all 19 releases →](CHANGELOG.md)
-
-[View all 12 releases →](CHANGELOG.md)
+[View all 20 releases →](CHANGELOG.md)
 
 ## License
 
@@ -813,7 +825,9 @@ This project builds upon excellent open-source work:
 
 ## Project Stats
 
-- **19 Major Versions** released
+- **20 Major Versions** released
+- **PostgreSQL Vector Database** with pgvector
+- **Automated Backup & DR** with Kubernetes CronJobs
 - **Production-Ready Kubernetes** with Helm charts
 - **Cost Tracking & Forecasting** with budget alerts
 - **Enterprise Admin Dashboard** with 7 management sections
