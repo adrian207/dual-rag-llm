@@ -45,6 +45,15 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 
 ## Key Features
 
+### 🌍 Multi-language Support (v1.12.0)
+- **10 Languages Supported**: English, Spanish, French, German, Japanese, Chinese (Simplified), Portuguese, Russian, Italian, Korean
+- **Auto Language Detection**: Recognize input language automatically
+- **LLM-Powered Translation**: High-quality translation using Ollama
+- **Translation Caching**: Fast repeated translations
+- **UI Localization**: 5 UI language packs (expandable)
+- **Confidence Scoring**: Translation quality metrics
+- **Native Language Names**: Display languages in their native script
+
 ### 💻 Code Syntax Highlighting (v1.11.0)
 - **22 Languages Supported**: Python, JavaScript, TypeScript, Java, C#, C, C++, Go, Rust, PHP, Ruby, Swift, Kotlin, **PowerShell**, Bash, SQL, HTML, CSS, JSON, YAML, XML, Markdown
 - **9 Themes**: VS Dark, VS Light, GitHub Dark, GitHub Light, Monokai, Dracula, Nord, Solarized Dark/Light
