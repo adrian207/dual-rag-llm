@@ -1,6 +1,6 @@
 # Dual RAG LLM System
 
-[![Version](https://img.shields.io/badge/version-1.18.0-blue.svg)](https://github.com/adrian207/dual-rag-llm/releases)
+[![Version](https://img.shields.io/badge/version-1.19.0-blue.svg)](https://github.com/adrian207/dual-rag-llm/releases)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/docker-20.10+-blue.svg)](https://www.docker.com/)
@@ -64,6 +64,18 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 ```
 
 ## Key Features
+
+### ☸️ Production-Ready Kubernetes Deployment (v1.19.0)
+- **Complete Helm Chart**: Production-grade Helm chart with 15+ templates
+- **Auto-scaling**: HPA with CPU/memory-based scaling (2-10 replicas)
+- **High Availability**: Pod anti-affinity, Pod Disruption Budget, multi-replica setup
+- **Persistent Storage**: PVC support for data and Ollama models
+- **Ingress & TLS**: NGINX ingress with cert-manager integration
+- **Monitoring**: Prometheus ServiceMonitor, health probes (liveness/readiness/startup)
+- **Security**: Network policies, security contexts, secrets management
+- **GPU Support**: NVIDIA GPU integration for Ollama
+- **Redis Integration**: Bitnami Redis chart dependency
+- **One-Command Deployment**: Automated deployment script
 
 ### 💰 Cost Tracking & Budget Management (v1.18.0)
 - **Comprehensive Cost Tracking**: Track all query costs with token-level precision
@@ -735,18 +747,18 @@ request_timeout = 120.0       # LLM request timeout (seconds)
 
 ## Version History
 
-**Current Version:** 1.18.0 (October 31, 2024)
+**Current Version:** 1.19.0 (October 31, 2024)
 
 See [CHANGELOG.md](CHANGELOG.md) for complete release notes.
 
 **Recent Releases:**
+- **v1.19.0** - Kubernetes Deployment (Helm charts, auto-scaling, HA, GPU support)
 - **v1.18.0** - Cost Tracking & Budget Management (forecasting, alerts, analytics)
 - **v1.17.0** - Enterprise Admin Dashboard (comprehensive management interface)
 - **v1.16.0** - Usage Analytics (comprehensive tracking, insights, time-series data)
 - **v1.15.0** - Data Encryption (AES-256, TLS 1.2+, key management)
-- **v1.14.0** - Enterprise Audit Logging (24 event types, compliance ready)
 
-[View all 18 releases →](CHANGELOG.md)
+[View all 19 releases →](CHANGELOG.md)
 
 [View all 12 releases →](CHANGELOG.md)
 
@@ -801,7 +813,8 @@ This project builds upon excellent open-source work:
 
 ## Project Stats
 
-- **18 Major Versions** released
+- **19 Major Versions** released
+- **Production-Ready Kubernetes** with Helm charts
 - **Cost Tracking & Forecasting** with budget alerts
 - **Enterprise Admin Dashboard** with 7 management sections
 - **Comprehensive Usage Analytics** with AI insights
@@ -824,7 +837,7 @@ If you use this project in your research or production, please cite:
   author = {Johnson, Adrian},
   title = {Dual RAG LLM System: Enterprise RAG with Multi-language Support},
   year = {2024},
-  version = {1.18.0},
+  version = {1.19.0},
   url = {https://github.com/adrian207/dual-rag-llm}
 }
 ```
@@ -832,5 +845,5 @@ If you use this project in your research or production, please cite:
 ---
 
 **Built with ❤️ by Adrian Johnson**  
-**Last Updated:** October 31, 2024 | **Version:** 1.18.0
+**Last Updated:** October 31, 2024 | **Version:** 1.19.0
 
