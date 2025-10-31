@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automatic Model Selection - Dual RAG LLM</title>
+    <link rel="stylesheet" href="/ui/styles.css">
+    <link rel="stylesheet" href="/ui/auto-selection.css">
+</head>
+<body>
+    <div class="container auto-selection-layout">
+        <header>
+            <h1>🤖 Automatic Model Selection</h1>
+            <nav>
+                <a href="/ui">← Back to Chat</a>
+                <a href="/ui/ensembles.html">🎯 Ensembles</a>
+                <a href="/ui/ab-testing.html">🧪 A/B Testing</a>
+                <button id="refreshAll" class="btn-primary">🔄 Refresh</button>
+            </nav>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-btn active" data-tab="overview">📊 Overview</button>
+            <button class="tab-btn" data-tab="routing">🗺️ Routing Matrix</button>
+            <button class="tab-btn" data-tab="performance">📈 Performance</button>
+            <button class="tab-btn" data-tab="decisions">📝 Decisions</button>
+            <button class="tab-btn" data-tab="test">🧪 Test</button>
+        </div>
+
+        <div class="content">
+            <!-- Overview Tab -->
+            <div id="overview-tab" class="tab-content active">
+                <div class="config-panel">
+                    <h2>⚙️ Configuration</h2>
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label class="toggle">
+                                <input type="checkbox" id="autoEnabled">
+                                <span class="slider"></span>
+                                <span class="label-text">Enable Automatic Selection</span>
+                            </label>
+                        </div>
+                        <div class="config-item">
+                            <label class="toggle">
+                                <input type="checkbox" id="usePerformance">
+                                <span class="slider"></span>
+                                <span class="label-text">Use Performance Data</span>
+                            </label>
+                        </div>
+                        <div class="config-item">
+                            <label for="confidenceThreshold">Confidence Threshold</label>
+                            <input type="range" id="confidenceThreshold" min="0" max="1" step="0.05" value="0.6">
+                            <span id="confidenceValue">0.6</span>
+                        </div>
+                        <div class="config-item">
+                            <label for="learningRate">Learning Rate</label>
+                            <input type="range" id="learningRate" min="0.01" max="0.5" step="0.01" value="0.1">
+                            <span id="learningValue">0.1</span>
+                        </div>
+                        <div class="config-item">
+                            <label for="minQueries">Min Queries for Routing</label>
+                            <input type="number" id="minQueries" min="1" max="100" value="10">
+                        </div>
+                        <div class="config-item">
+                            <label for="fallbackModel">Fallback Model</label>
+                            <select id="fallbackModel">
+                                <option value="qwen2.5-coder:7b">Qwen 2.5 Coder 7B</option>
+                                <option value="llama3.1:8b">Llama 3.1 8B</option>
+                                <option value="deepseek-coder-v2:16b">DeepSeek Coder 16B</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button id="saveConfig" class="btn-primary btn-lg">💾 Save Configuration</button>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Total Decisions</h3>
+                        <div class="stat-value" id="totalDecisions">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Avg Confidence</h3>
+                        <div class="stat-value" id="avgConfidence">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Fallback Used</h3>
+                        <div class="stat-value" id="fallbackRate">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <h3>User Overrides</h3>
+                        <div class="stat-value" id="overrideRate">0%</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Routing Matrix Tab -->
+            <div id="routing-tab" class="tab-content">
+                <div class="panel">
+                    <h2>🗺️ Query Type → Model Routing</h2>
+                    <div id="routingMatrix"></div>
+                </div>
+            </div>
+
+            <!-- Performance Tab -->
+            <div id="performance-tab" class="tab-content">
+                <div class="panel">
+                    <h2>📈 Performance by Query Type & Model</h2>
+                    <div id="performanceList"></div>
+                </div>
+            </div>
+
+            <!-- Decisions Tab -->
+            <div id="decisions-tab" class="tab-content">
+                <div class="panel">
+                    <h2>📝 Recent Selection Decisions</h2>
+                    <div id="decisionsList"></div>
+                </div>
+            </div>
+
+            <!-- Test Tab -->
+            <div id="test-tab" class="tab-content">
+                <div class="panel">
+                    <h2>🧪 Test Query Classification</h2>
+                    <div class="test-form">
+                        <div class="form-group">
+                            <label for="testQuery">Enter a query to classify:</label>
+                            <textarea id="testQuery" placeholder="e.g., Write a function to sort an array" rows="4"></textarea>
+                        </div>
+                        <button onclick="testClassification()" class="btn-primary btn-lg">🔍 Classify & Select Model</button>
+                    </div>
+                    <div id="testResults" class="test-results" style="display:none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/ui/auto-selection.js"></script>
+</body>
+</html>
+

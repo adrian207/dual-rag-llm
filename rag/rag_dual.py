@@ -68,6 +68,10 @@ class AppState:
     model_versions: Dict[str, ModelVersion] = {}  # Fine-tuned model registry
     ensembles: Dict[str, EnsembleConfig] = {}  # Model ensembles
     ensemble_results: Dict[str, List[EnsembleResult]] = {}  # Ensemble results
+    routing_matrix: Dict[QueryType, ModelRouting] = {}  # Query type → model routing
+    query_type_performance: Dict[str, QueryTypePerformance] = {}  # key: f"{query_type}_{model}"
+    selection_decisions: List[SelectionDecision] = []  # History of selections
+    auto_selection_config: AutoSelectionConfig = AutoSelectionConfig()
 
 app_state = AppState()
 
@@ -335,6 +339,74 @@ class EnsembleResult(BaseModel):
     # Strategy-specific
     voting_breakdown: Optional[Dict[str, int]] = None
     agreement_score: Optional[float] = None
+
+# Automatic Model Selection Models
+class QueryType(str, Enum):
+    """Types of queries for automatic routing"""
+    CODE_GENERATION = "code_generation"
+    CODE_EXPLANATION = "code_explanation"
+    CODE_DEBUGGING = "code_debugging"
+    CODE_REVIEW = "code_review"
+    CODE_REFACTORING = "code_refactoring"
+    CODE_TESTING = "code_testing"
+    CODE_DOCUMENTATION = "code_documentation"
+    ARCHITECTURE_DESIGN = "architecture_design"
+    GENERAL_QUESTION = "general_question"
+    TROUBLESHOOTING = "troubleshooting"
+    BEST_PRACTICES = "best_practices"
+    COMPARISON = "comparison"
+
+class QueryClassification(BaseModel):
+    """Classification result for a query"""
+    query: str
+    query_type: QueryType
+    confidence: float  # 0.0 to 1.0
+    keywords_matched: List[str]
+    secondary_types: List[QueryType] = []  # Alternative classifications
+    language: Optional[str] = None  # Programming language if detected
+    complexity: str = "medium"  # low, medium, high
+
+class ModelRouting(BaseModel):
+    """Model routing configuration per query type"""
+    query_type: QueryType
+    primary_model: str
+    fallback_models: List[str]
+    min_confidence: float = 0.5
+    reasoning: str = ""
+
+class QueryTypePerformance(BaseModel):
+    """Track model performance per query type"""
+    query_type: QueryType
+    model: str
+    queries_handled: int = 0
+    avg_response_time: float = 0.0
+    avg_tokens_per_sec: float = 0.0
+    success_rate: float = 1.0
+    user_ratings: List[int] = []
+    avg_rating: float = 0.0
+    last_updated: str
+
+class AutoSelectionConfig(BaseModel):
+    """Configuration for automatic model selection"""
+    enabled: bool = True
+    use_performance_data: bool = True
+    learning_rate: float = 0.1  # How quickly to adapt to feedback
+    min_queries_for_routing: int = 10  # Min queries before using performance data
+    confidence_threshold: float = 0.6  # Min confidence for auto-selection
+    fallback_model: str = "qwen2.5-coder:7b"  # Default if no match
+
+class SelectionDecision(BaseModel):
+    """Record of an automatic selection decision"""
+    query_id: str
+    query: str
+    classification: QueryClassification
+    selected_model: str
+    reasoning: str
+    fallback_used: bool = False
+    user_override: bool = False
+    timestamp: str
+    response_time: Optional[float] = None
+    user_rating: Optional[int] = None
 
 class SystemStats(BaseModel):
     """System statistics"""
@@ -1235,6 +1307,488 @@ def apply_consensus(responses: List[Dict[str, Any]], threshold: float = 0.7) -> 
         "models_agreed": [best["model"]],
         "consensus_failed": True
     }
+
+# Automatic Model Selection Functions
+def classify_query(query: str) -> QueryClassification:
+    """Classify query into type with confidence score"""
+    query_lower = query.lower()
+    keywords_matched = []
+    scores = {query_type: 0.0 for query_type in QueryType}
+    
+    # Define keywords for each query type
+    type_keywords = {
+        QueryType.CODE_GENERATION: {
+            "write": 2.0, "create": 2.0, "implement": 2.0, "generate": 2.0,
+            "build": 1.5, "make": 1.5, "function": 1.5, "class": 1.5,
+            "method": 1.5, "algorithm": 2.0, "code": 1.0
+        },
+        QueryType.CODE_EXPLANATION: {
+            "explain": 3.0, "what is": 2.5, "what does": 2.5, "how does": 2.5,
+            "describe": 2.0, "understand": 2.0, "meaning": 2.0, "purpose": 2.0,
+            "works": 1.5, "means": 1.5
+        },
+        QueryType.CODE_DEBUGGING: {
+            "debug": 3.0, "fix": 3.0, "error": 2.5, "bug": 2.5, "issue": 2.0,
+            "problem": 2.0, "not working": 2.5, "fails": 2.0, "crash": 2.5,
+            "exception": 2.0, "traceback": 2.0, "stack trace": 2.5
+        },
+        QueryType.CODE_REVIEW: {
+            "review": 3.0, "check": 2.0, "analyze": 2.0, "assess": 2.0,
+            "evaluate": 2.0, "quality": 2.0, "improve": 1.5, "better": 1.5,
+            "secure": 2.0, "vulnerable": 2.5
+        },
+        QueryType.CODE_REFACTORING: {
+            "refactor": 3.0, "optimize": 2.5, "improve": 2.0, "clean": 2.0,
+            "rewrite": 2.5, "restructure": 2.5, "simplify": 2.0,
+            "performance": 2.0, "efficient": 2.0
+        },
+        QueryType.CODE_TESTING: {
+            "test": 3.0, "unit test": 3.0, "integration test": 3.0,
+            "testing": 2.5, "mock": 2.0, "assert": 2.0, "coverage": 2.0,
+            "pytest": 2.0, "jest": 2.0, "junit": 2.0
+        },
+        QueryType.CODE_DOCUMENTATION: {
+            "document": 3.0, "docstring": 3.0, "comment": 2.5,
+            "documentation": 3.0, "readme": 2.5, "api doc": 2.5,
+            "javadoc": 2.5, "jsdoc": 2.5
+        },
+        QueryType.ARCHITECTURE_DESIGN: {
+            "architecture": 3.0, "design": 2.5, "pattern": 2.5,
+            "structure": 2.0, "system": 1.5, "microservice": 2.5,
+            "api": 1.5, "database": 1.5, "scalable": 2.0
+        },
+        QueryType.TROUBLESHOOTING: {
+            "troubleshoot": 3.0, "diagnose": 2.5, "investigate": 2.0,
+            "why": 2.0, "not working": 2.5, "doesn't work": 2.5,
+            "won't": 2.0, "can't": 2.0
+        },
+        QueryType.BEST_PRACTICES: {
+            "best practice": 3.0, "recommended": 2.5, "should": 2.0,
+            "convention": 2.5, "standard": 2.0, "guideline": 2.5,
+            "proper way": 2.5, "right way": 2.5
+        },
+        QueryType.COMPARISON: {
+            "compare": 3.0, "difference": 3.0, "vs": 2.5, "versus": 2.5,
+            "better": 2.0, "which": 2.0, "between": 1.5, "or": 1.0
+        }
+    }
+    
+    # Score each query type based on keyword matches
+    for query_type, keywords in type_keywords.items():
+        for keyword, weight in keywords.items():
+            if keyword in query_lower:
+                scores[query_type] += weight
+                if keyword not in keywords_matched:
+                    keywords_matched.append(keyword)
+    
+    # Default to general question if no strong matches
+    if max(scores.values()) == 0:
+        return QueryClassification(
+            query=query,
+            query_type=QueryType.GENERAL_QUESTION,
+            confidence=0.5,
+            keywords_matched=[],
+            complexity="medium"
+        )
+    
+    # Get top scoring type
+    sorted_types = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    primary_type = sorted_types[0][0]
+    primary_score = sorted_types[0][1]
+    
+    # Calculate confidence (normalize to 0-1)
+    max_possible_score = 10.0  # Rough estimate
+    confidence = min(1.0, primary_score / max_possible_score)
+    
+    # Get secondary types (score > 0)
+    secondary_types = [t for t, s in sorted_types[1:3] if s > 0]
+    
+    # Detect programming language
+    language = detect_language(query)
+    
+    # Estimate complexity
+    complexity = estimate_complexity(query)
+    
+    return QueryClassification(
+        query=query,
+        query_type=primary_type,
+        confidence=confidence,
+        keywords_matched=keywords_matched,
+        secondary_types=secondary_types,
+        language=language,
+        complexity=complexity
+    )
+
+def detect_language(query: str) -> Optional[str]:
+    """Detect programming language from query"""
+    query_lower = query.lower()
+    
+    languages = {
+        "python": ["python", "py", "django", "flask", "pandas", "numpy"],
+        "javascript": ["javascript", "js", "node", "react", "vue", "angular", "typescript", "ts"],
+        "java": ["java", "spring", "maven", "gradle"],
+        "csharp": ["c#", "csharp", ".net", "dotnet", "xaml", "blazor"],
+        "go": ["golang", "go "],
+        "rust": ["rust", "cargo"],
+        "cpp": ["c++", "cpp"],
+        "c": [" c ", "c programming"],
+        "ruby": ["ruby", "rails"],
+        "php": ["php", "laravel"],
+        "sql": ["sql", "mysql", "postgres", "oracle"],
+        "powershell": ["powershell", "ps1"],
+        "bash": ["bash", "shell", "sh "]
+    }
+    
+    for lang, keywords in languages.items():
+        if any(kw in query_lower for kw in keywords):
+            return lang
+    
+    return None
+
+def estimate_complexity(query: str) -> str:
+    """Estimate query complexity"""
+    word_count = len(query.split())
+    
+    # Simple heuristics
+    if word_count < 10:
+        return "low"
+    elif word_count > 30:
+        return "high"
+    
+    # Check for complexity indicators
+    complex_keywords = [
+        "distributed", "concurrent", "parallel", "scalable", "enterprise",
+        "microservice", "architecture", "design pattern", "algorithm",
+        "optimization", "performance"
+    ]
+    
+    if any(kw in query.lower() for kw in complex_keywords):
+        return "high"
+    
+    return "medium"
+
+def initialize_default_routing():
+    """Initialize default routing matrix"""
+    if app_state.routing_matrix:
+        return  # Already initialized
+    
+    default_routes = {
+        QueryType.CODE_GENERATION: ModelRouting(
+            query_type=QueryType.CODE_GENERATION,
+            primary_model="qwen2.5-coder:7b",
+            fallback_models=["deepseek-coder-v2:16b", "codellama:13b"],
+            min_confidence=0.6,
+            reasoning="Fast code generation model"
+        ),
+        QueryType.CODE_EXPLANATION: ModelRouting(
+            query_type=QueryType.CODE_EXPLANATION,
+            primary_model="llama3.1:8b",
+            fallback_models=["qwen2.5-coder:7b", "deepseek-coder-v2:16b"],
+            min_confidence=0.5,
+            reasoning="General purpose explanation model"
+        ),
+        QueryType.CODE_DEBUGGING: ModelRouting(
+            query_type=QueryType.CODE_DEBUGGING,
+            primary_model="deepseek-coder-v2:16b",
+            fallback_models=["qwen2.5-coder:14b", "codellama:13b"],
+            min_confidence=0.6,
+            reasoning="Powerful debugging model"
+        ),
+        QueryType.CODE_REVIEW: ModelRouting(
+            query_type=QueryType.CODE_REVIEW,
+            primary_model="deepseek-coder-v2:16b",
+            fallback_models=["qwen2.5-coder:14b", "llama3.1:8b"],
+            min_confidence=0.6,
+            reasoning="Thorough code analysis"
+        ),
+        QueryType.CODE_REFACTORING: ModelRouting(
+            query_type=QueryType.CODE_REFACTORING,
+            primary_model="qwen2.5-coder:14b",
+            fallback_models=["deepseek-coder-v2:16b", "qwen2.5-coder:7b"],
+            min_confidence=0.6,
+            reasoning="Advanced refactoring capabilities"
+        ),
+        QueryType.CODE_TESTING: ModelRouting(
+            query_type=QueryType.CODE_TESTING,
+            primary_model="qwen2.5-coder:7b",
+            fallback_models=["codellama:13b", "deepseek-coder-v2:16b"],
+            min_confidence=0.5,
+            reasoning="Test generation specialist"
+        ),
+        QueryType.CODE_DOCUMENTATION: ModelRouting(
+            query_type=QueryType.CODE_DOCUMENTATION,
+            primary_model="llama3.1:8b",
+            fallback_models=["qwen2.5-coder:7b", "codellama:13b"],
+            min_confidence=0.5,
+            reasoning="Clear documentation writing"
+        ),
+        QueryType.ARCHITECTURE_DESIGN: ModelRouting(
+            query_type=QueryType.ARCHITECTURE_DESIGN,
+            primary_model="deepseek-coder-v2:16b",
+            fallback_models=["qwen2.5-coder:14b", "llama3.1:8b"],
+            min_confidence=0.6,
+            reasoning="High-level design thinking"
+        ),
+        QueryType.GENERAL_QUESTION: ModelRouting(
+            query_type=QueryType.GENERAL_QUESTION,
+            primary_model="llama3.1:8b",
+            fallback_models=["qwen2.5-coder:7b", "deepseek-coder-v2:16b"],
+            min_confidence=0.4,
+            reasoning="General purpose model"
+        ),
+        QueryType.TROUBLESHOOTING: ModelRouting(
+            query_type=QueryType.TROUBLESHOOTING,
+            primary_model="deepseek-coder-v2:16b",
+            fallback_models=["qwen2.5-coder:14b", "llama3.1:8b"],
+            min_confidence=0.5,
+            reasoning="Problem diagnosis expert"
+        ),
+        QueryType.BEST_PRACTICES: ModelRouting(
+            query_type=QueryType.BEST_PRACTICES,
+            primary_model="llama3.1:8b",
+            fallback_models=["deepseek-coder-v2:16b", "qwen2.5-coder:14b"],
+            min_confidence=0.5,
+            reasoning="Knowledgeable about conventions"
+        ),
+        QueryType.COMPARISON: ModelRouting(
+            query_type=QueryType.COMPARISON,
+            primary_model="llama3.1:8b",
+            fallback_models=["deepseek-coder-v2:16b", "qwen2.5-coder:14b"],
+            min_confidence=0.5,
+            reasoning="Balanced comparison analysis"
+        )
+    }
+    
+    app_state.routing_matrix = default_routes
+    logger.info("initialized_default_routing", routes=len(default_routes))
+
+async def select_model_automatically(query: str, available_models: Optional[List[str]] = None) -> tuple[str, QueryClassification, str]:
+    """Automatically select best model for query"""
+    # Initialize routing if needed
+    initialize_default_routing()
+    
+    # Classify query
+    classification = classify_query(query)
+    
+    # Check if auto-selection is enabled
+    if not app_state.auto_selection_config.enabled:
+        fallback = app_state.auto_selection_config.fallback_model
+        return fallback, classification, "Auto-selection disabled, using fallback"
+    
+    # Check confidence threshold
+    if classification.confidence < app_state.auto_selection_config.confidence_threshold:
+        fallback = app_state.auto_selection_config.fallback_model
+        return fallback, classification, f"Low confidence ({classification.confidence:.2f}), using fallback"
+    
+    # Get routing for query type
+    routing = app_state.routing_matrix.get(classification.query_type)
+    if not routing:
+        fallback = app_state.auto_selection_config.fallback_model
+        return fallback, classification, "No routing found for query type"
+    
+    # Use performance data if enabled and available
+    if app_state.auto_selection_config.use_performance_data:
+        perf_key = f"{classification.query_type}_{routing.primary_model}"
+        perf_data = app_state.query_type_performance.get(perf_key)
+        
+        if perf_data and perf_data.queries_handled >= app_state.auto_selection_config.min_queries_for_routing:
+            # Check if performance is good
+            if perf_data.success_rate < 0.7 or perf_data.avg_rating < 3.0:
+                # Try fallback models
+                for fallback_model in routing.fallback_models:
+                    fallback_key = f"{classification.query_type}_{fallback_model}"
+                    fallback_perf = app_state.query_type_performance.get(fallback_key)
+                    
+                    if fallback_perf and fallback_perf.avg_rating > perf_data.avg_rating:
+                        return fallback_model, classification, f"Performance-based: {fallback_model} rated higher"
+    
+    # Check model availability
+    if available_models and routing.primary_model not in available_models:
+        # Try fallbacks
+        for fallback_model in routing.fallback_models:
+            if fallback_model in available_models:
+                return fallback_model, classification, f"Primary unavailable, using fallback: {fallback_model}"
+        
+        # Use any available model
+        if available_models:
+            return available_models[0], classification, "Using first available model"
+    
+    # Return primary model
+    return routing.primary_model, classification, f"Matched {classification.query_type.value}: {routing.reasoning}"
+
+async def record_selection_decision(
+    query_id: str,
+    query: str,
+    classification: QueryClassification,
+    selected_model: str,
+    reasoning: str,
+    fallback_used: bool = False,
+    user_override: bool = False
+) -> SelectionDecision:
+    """Record an automatic selection decision"""
+    decision = SelectionDecision(
+        query_id=query_id,
+        query=query,
+        classification=classification,
+        selected_model=selected_model,
+        reasoning=reasoning,
+        fallback_used=fallback_used,
+        user_override=user_override,
+        timestamp=datetime.now().isoformat()
+    )
+    
+    app_state.selection_decisions.append(decision)
+    
+    # Keep only last 1000 decisions
+    if len(app_state.selection_decisions) > 1000:
+        app_state.selection_decisions = app_state.selection_decisions[-1000:]
+    
+    return decision
+
+async def update_query_type_performance(
+    query_type: QueryType,
+    model: str,
+    response_time: float,
+    tokens_per_sec: float,
+    success: bool,
+    user_rating: Optional[int] = None
+):
+    """Update performance metrics for query type + model combination"""
+    key = f"{query_type}_{model}"
+    
+    if key not in app_state.query_type_performance:
+        app_state.query_type_performance[key] = QueryTypePerformance(
+            query_type=query_type,
+            model=model,
+            last_updated=datetime.now().isoformat()
+        )
+    
+    perf = app_state.query_type_performance[key]
+    
+    # Update metrics with exponential moving average
+    learning_rate = app_state.auto_selection_config.learning_rate
+    
+    if perf.queries_handled == 0:
+        perf.avg_response_time = response_time
+        perf.avg_tokens_per_sec = tokens_per_sec
+    else:
+        perf.avg_response_time = (1 - learning_rate) * perf.avg_response_time + learning_rate * response_time
+        perf.avg_tokens_per_sec = (1 - learning_rate) * perf.avg_tokens_per_sec + learning_rate * tokens_per_sec
+    
+    perf.queries_handled += 1
+    
+    # Update success rate
+    if perf.queries_handled == 1:
+        perf.success_rate = 1.0 if success else 0.0
+    else:
+        perf.success_rate = (1 - learning_rate) * perf.success_rate + learning_rate * (1.0 if success else 0.0)
+    
+    # Update ratings
+    if user_rating:
+        perf.user_ratings.append(user_rating)
+        # Keep only last 100 ratings
+        if len(perf.user_ratings) > 100:
+            perf.user_ratings = perf.user_ratings[-100:]
+        perf.avg_rating = sum(perf.user_ratings) / len(perf.user_ratings)
+    
+    perf.last_updated = datetime.now().isoformat()
+    
+    logger.info("updated_query_type_performance", key=key, queries=perf.queries_handled, rating=perf.avg_rating)
+
+# Automatic Model Selection API Endpoints
+@app.post("/auto-selection/classify")
+async def classify_query_endpoint(query: str):
+    """Classify a query into type"""
+    classification = classify_query(query)
+    return classification
+
+@app.post("/auto-selection/select")
+async def select_model_endpoint(query: str):
+    """Automatically select best model for query"""
+    model, classification, reasoning = await select_model_automatically(query)
+    return {
+        "selected_model": model,
+        "classification": classification,
+        "reasoning": reasoning
+    }
+
+@app.get("/auto-selection/config")
+async def get_auto_selection_config():
+    """Get automatic selection configuration"""
+    return app_state.auto_selection_config
+
+@app.put("/auto-selection/config")
+async def update_auto_selection_config(config: AutoSelectionConfig):
+    """Update automatic selection configuration"""
+    app_state.auto_selection_config = config
+    logger.info("updated_auto_selection_config", enabled=config.enabled)
+    return config
+
+@app.get("/auto-selection/routing")
+async def get_routing_matrix():
+    """Get model routing matrix"""
+    initialize_default_routing()
+    return {"routing": list(app_state.routing_matrix.values())}
+
+@app.put("/auto-selection/routing/{query_type}")
+async def update_routing(query_type: QueryType, routing: ModelRouting):
+    """Update routing for a query type"""
+    app_state.routing_matrix[query_type] = routing
+    logger.info("updated_routing", query_type=query_type, model=routing.primary_model)
+    return routing
+
+@app.get("/auto-selection/performance")
+async def get_performance_stats(query_type: Optional[QueryType] = None):
+    """Get performance statistics"""
+    if query_type:
+        # Filter by query type
+        stats = {k: v for k, v in app_state.query_type_performance.items() if k.startswith(query_type.value)}
+    else:
+        stats = app_state.query_type_performance
+    
+    return {"performance": list(stats.values())}
+
+@app.get("/auto-selection/decisions")
+async def get_selection_decisions(limit: int = 50):
+    """Get recent selection decisions"""
+    return {"decisions": app_state.selection_decisions[-limit:]}
+
+@app.post("/auto-selection/feedback")
+async def submit_selection_feedback(query_id: str, rating: int, correct_model: Optional[str] = None):
+    """Submit feedback on automatic selection"""
+    # Find the decision
+    decision = next((d for d in app_state.selection_decisions if d.query_id == query_id), None)
+    
+    if not decision:
+        raise HTTPException(status_code=404, detail="Decision not found")
+    
+    decision.user_rating = rating
+    
+    # If user suggests different model, learn from it
+    if correct_model and correct_model != decision.selected_model:
+        # Decrease confidence in selected model
+        await update_query_type_performance(
+            decision.classification.query_type,
+            decision.selected_model,
+            decision.response_time or 0.0,
+            0.0,
+            False,
+            rating
+        )
+        
+        # Increase confidence in correct model
+        await update_query_type_performance(
+            decision.classification.query_type,
+            correct_model,
+            0.0,
+            0.0,
+            True,
+            5  # Boost rating
+        )
+        
+        logger.info("learned_from_feedback", wrong=decision.selected_model, correct=correct_model)
+    
+    return {"status": "success", "message": "Feedback recorded"}
 
 # Model Ensemble Management Endpoints
 @app.post("/ensembles", response_model=EnsembleConfig)
