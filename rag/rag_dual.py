@@ -74,6 +74,8 @@ class AppState:
     auto_selection_config: AutoSelectionConfig = AutoSelectionConfig()
     validations: List[AnswerValidation] = []  # Validation history
     validation_config: ValidationConfig = ValidationConfig()
+    factuality_checks: List[FactualityCheck] = []  # Factuality check history
+    factuality_config: FactualityConfig = FactualityConfig()
 
 app_state = AppState()
 
@@ -468,6 +470,83 @@ class ValidationConfig(BaseModel):
     enable_completeness_check: bool = True
     enable_code_validation: bool = True
     auto_reject_threshold: float = 0.3
+
+# Factuality Checking Models
+class ClaimType(str, Enum):
+    """Types of claims in answers"""
+    FACTUAL_STATEMENT = "factual_statement"
+    DEFINITION = "definition"
+    INSTRUCTION = "instruction"
+    OPINION = "opinion"
+    EXAMPLE = "example"
+    CODE_SNIPPET = "code_snippet"
+
+class Claim(BaseModel):
+    """An extracted claim from an answer"""
+    text: str
+    claim_type: ClaimType
+    confidence: float  # How confident extraction was
+    verifiable: bool  # Can this be fact-checked
+    context_required: bool  # Needs domain context to verify
+
+class FactCheckResult(BaseModel):
+    """Result of fact-checking a single claim"""
+    claim: Claim
+    verdict: str  # "supported", "contradicted", "unverifiable", "uncertain"
+    confidence: float  # 0.0 to 1.0
+    evidence: List[str] = []  # Supporting or contradicting evidence
+    sources: List[str] = []  # Where evidence came from
+    explanation: str = ""
+
+class HallucinationIndicator(BaseModel):
+    """Indicators of potential hallucination"""
+    indicator_type: str  # "unsupported_claim", "false_confidence", "inconsistent_detail", "fabricated_source"
+    severity: float  # 0.0 to 1.0
+    description: str
+    location: str  # Where in answer
+
+class FactualityCheck(BaseModel):
+    """Complete factuality assessment"""
+    query_id: str
+    query: str
+    answer: str
+    model: str
+    timestamp: str
+    
+    # Claims analysis
+    claims_extracted: List[Claim]
+    claims_verified: int
+    claims_supported: int
+    claims_contradicted: int
+    claims_uncertain: int
+    
+    # Fact check results
+    fact_checks: List[FactCheckResult]
+    
+    # Hallucination detection
+    hallucination_indicators: List[HallucinationIndicator]
+    hallucination_risk: float  # 0.0 to 1.0
+    
+    # Overall assessment
+    factuality_score: float  # 0.0 to 1.0
+    confidence: float
+    reliable: bool
+    
+    # Metadata
+    context_available: bool
+    sources_cited: int
+    unsupported_claims: List[str] = []
+    corrections: List[Dict[str, str]] = []
+    
+class FactualityConfig(BaseModel):
+    """Configuration for factuality checking"""
+    enabled: bool = True
+    min_confidence_threshold: float = 0.6
+    enable_claim_extraction: bool = True
+    enable_hallucination_detection: bool = True
+    enable_source_verification: bool = True
+    strict_mode: bool = False  # Require evidence for all claims
+    hallucination_threshold: float = 0.7
     
 class SystemStats(BaseModel):
     """System statistics"""
@@ -2262,6 +2341,415 @@ async def get_validation_stats():
         "avg_score": round(avg_score, 3),
         "approval_rate": round(approval_rate, 3),
         "check_pass_rates": {k: round(v, 3) for k, v in check_pass_rates.items()}
+    }
+
+# Factuality Checking Functions
+def extract_claims(answer: str) -> List[Claim]:
+    """Extract verifiable claims from answer"""
+    claims = []
+    
+    # Split into sentences
+    sentences = []
+    for delimiter in ['. ', '! ', '? ', '.\n', '\n\n']:
+        if delimiter in answer:
+            parts = answer.split(delimiter)
+            sentences.extend([s.strip() for s in parts if s.strip()])
+    
+    if not sentences:
+        sentences = [answer]
+    
+    for sentence in sentences:
+        if len(sentence) < 10:
+            continue  # Skip very short sentences
+        
+        sentence_lower = sentence.lower()
+        
+        # Classify claim type
+        claim_type = ClaimType.FACTUAL_STATEMENT
+        verifiable = True
+        context_required = True
+        
+        # Check for definitions
+        if any(word in sentence_lower for word in ["is a", "is an", "refers to", "means", "defined as"]):
+            claim_type = ClaimType.DEFINITION
+            verifiable = True
+            context_required = False
+        
+        # Check for instructions
+        elif any(word in sentence_lower[:20] for word in ["use", "run", "execute", "call", "create", "write"]):
+            claim_type = ClaimType.INSTRUCTION
+            verifiable = False
+        
+        # Check for examples
+        elif any(word in sentence_lower for word in ["for example", "such as", "like", "e.g."]):
+            claim_type = ClaimType.EXAMPLE
+            verifiable = True
+        
+        # Check for code
+        elif "```" in sentence or any(word in sentence_lower for word in ["function", "class", "method", "variable"]):
+            claim_type = ClaimType.CODE_SNIPPET
+            verifiable = True
+        
+        # Check for opinions
+        elif any(word in sentence_lower for word in ["should", "better", "prefer", "recommend", "suggest", "think", "believe"]):
+            claim_type = ClaimType.OPINION
+            verifiable = False
+        
+        # Estimate extraction confidence
+        confidence = 0.8
+        if len(sentence.split()) < 5:
+            confidence = 0.5
+        elif len(sentence.split()) > 30:
+            confidence = 0.6
+        
+        claims.append(Claim(
+            text=sentence,
+            claim_type=claim_type,
+            confidence=confidence,
+            verifiable=verifiable,
+            context_required=context_required
+        ))
+    
+    return claims
+
+def detect_hallucinations(answer: str, context: Optional[str] = None) -> tuple[List[HallucinationIndicator], float]:
+    """Detect potential hallucinations in answer"""
+    indicators = []
+    
+    answer_lower = answer.lower()
+    
+    # 1. Check for false confidence markers
+    false_confidence_phrases = [
+        "definitely", "certainly", "always", "never", "impossible",
+        "guaranteed", "absolutely", "100%", "without a doubt"
+    ]
+    
+    for phrase in false_confidence_phrases:
+        if phrase in answer_lower:
+            indicators.append(HallucinationIndicator(
+                indicator_type="false_confidence",
+                severity=0.5,
+                description=f"Uses absolute language: '{phrase}'",
+                location=f"Contains '{phrase}'"
+            ))
+    
+    # 2. Check for fabricated sources
+    source_indicators = ["according to", "research shows", "studies indicate", "experts say"]
+    has_source_claim = any(ind in answer_lower for ind in source_indicators)
+    
+    if has_source_claim:
+        # Check if actual sources are cited
+        has_citation = any(word in answer for word in ["[", "(", "http", "www", "source:", "ref:"]))
+        if not has_citation:
+            indicators.append(HallucinationIndicator(
+                indicator_type="fabricated_source",
+                severity=0.8,
+                description="References sources without citations",
+                location="Claims research/studies without references"
+            ))
+    
+    # 3. Check for inconsistent details
+    if context:
+        # Look for specific numbers/dates that don't appear in context
+        import re
+        answer_numbers = set(re.findall(r'\b\d+\.?\d*\b', answer))
+        context_numbers = set(re.findall(r'\b\d+\.?\d*\b', context))
+        
+        unsupported_numbers = answer_numbers - context_numbers
+        if len(unsupported_numbers) > 3:
+            indicators.append(HallucinationIndicator(
+                indicator_type="inconsistent_detail",
+                severity=0.6,
+                description=f"Contains {len(unsupported_numbers)} numbers not in context",
+                location="Specific numerical claims"
+            ))
+    
+    # 4. Check for overly specific claims without context
+    specific_indicators = [
+        "in 2020", "in 2021", "in 2022", "in 2023", "in 2024",
+        "version 1.", "version 2.", "version 3.",
+        "released in", "published in"
+    ]
+    
+    specific_claims = sum(1 for ind in specific_indicators if ind in answer_lower)
+    if specific_claims > 2 and not context:
+        indicators.append(HallucinationIndicator(
+            indicator_type="unsupported_claim",
+            severity=0.7,
+            description="Makes specific version/date claims without source",
+            location="Temporal or version-specific claims"
+        ))
+    
+    # 5. Check for contradictory statements
+    contradictions = [
+        ("can", "cannot"), ("will", "will not"), ("is", "is not"),
+        ("does", "does not"), ("has", "has not")
+    ]
+    
+    for pos, neg in contradictions:
+        if f" {pos} " in answer_lower and f" {neg} " in answer_lower:
+            indicators.append(HallucinationIndicator(
+                indicator_type="inconsistent_detail",
+                severity=0.7,
+                description=f"Contains both '{pos}' and '{neg}'",
+                location="Contradictory statements"
+            ))
+    
+    # Calculate overall hallucination risk
+    if indicators:
+        avg_severity = sum(ind.severity for ind in indicators) / len(indicators)
+        hallucination_risk = min(1.0, avg_severity * (len(indicators) / 3))
+    else:
+        hallucination_risk = 0.0
+    
+    return indicators, hallucination_risk
+
+def verify_claim(claim: Claim, context: Optional[str] = None) -> FactCheckResult:
+    """Verify a single claim"""
+    
+    if not claim.verifiable:
+        return FactCheckResult(
+            claim=claim,
+            verdict="unverifiable",
+            confidence=0.5,
+            explanation="Claim type is not factually verifiable (opinion/instruction)"
+        )
+    
+    if not context:
+        return FactCheckResult(
+            claim=claim,
+            verdict="uncertain",
+            confidence=0.3,
+            explanation="No context available for verification"
+        )
+    
+    # Check if claim appears in context
+    claim_lower = claim.text.lower()
+    context_lower = context.lower()
+    
+    # Extract key terms from claim
+    claim_words = set(claim_lower.split())
+    context_words = set(context_lower.split())
+    
+    # Remove stop words
+    stop_words = {"the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "is", "are", "was", "were"}
+    claim_words -= stop_words
+    context_words -= stop_words
+    
+    # Calculate overlap
+    overlap = claim_words & context_words
+    support_ratio = len(overlap) / len(claim_words) if claim_words else 0
+    
+    # Determine verdict
+    if support_ratio > 0.6:
+        verdict = "supported"
+        confidence = min(0.95, support_ratio * 1.2)
+        explanation = f"{len(overlap)} key terms found in context"
+        evidence = [f"Context contains: {', '.join(list(overlap)[:5])}"]
+    elif support_ratio > 0.3:
+        verdict = "uncertain"
+        confidence = 0.5
+        explanation = f"Partial support ({len(overlap)} terms match)"
+        evidence = [f"Some overlap: {', '.join(list(overlap)[:3])}"]
+    else:
+        verdict = "contradicted"
+        confidence = 0.7
+        explanation = "Minimal overlap with context"
+        evidence = ["Claim not found in provided context"]
+    
+    return FactCheckResult(
+        claim=claim,
+        verdict=verdict,
+        confidence=confidence,
+        evidence=evidence,
+        sources=["RAG Context"],
+        explanation=explanation
+    )
+
+async def check_factuality(
+    query_id: str,
+    query: str,
+    answer: str,
+    model: str,
+    context: Optional[str] = None
+) -> FactualityCheck:
+    """Comprehensive factuality check"""
+    
+    if not app_state.factuality_config.enabled:
+        # Return minimal check if disabled
+        return FactualityCheck(
+            query_id=query_id,
+            query=query,
+            answer=answer,
+            model=model,
+            timestamp=datetime.now().isoformat(),
+            claims_extracted=[],
+            claims_verified=0,
+            claims_supported=0,
+            claims_contradicted=0,
+            claims_uncertain=0,
+            fact_checks=[],
+            hallucination_indicators=[],
+            hallucination_risk=0.0,
+            factuality_score=0.8,
+            confidence=0.5,
+            reliable=True,
+            context_available=False,
+            sources_cited=0
+        )
+    
+    # 1. Extract claims
+    claims = []
+    if app_state.factuality_config.enable_claim_extraction:
+        claims = extract_claims(answer)
+    
+    # 2. Verify claims against context
+    fact_checks = []
+    if app_state.factuality_config.enable_source_verification and context:
+        for claim in claims:
+            if claim.verifiable:
+                fact_check = verify_claim(claim, context)
+                fact_checks.append(fact_check)
+    
+    # 3. Detect hallucinations
+    hallucination_indicators = []
+    hallucination_risk = 0.0
+    if app_state.factuality_config.enable_hallucination_detection:
+        hallucination_indicators, hallucination_risk = detect_hallucinations(answer, context)
+    
+    # Calculate metrics
+    claims_verified = len([fc for fc in fact_checks if fc.verdict != "unverifiable"])
+    claims_supported = len([fc for fc in fact_checks if fc.verdict == "supported"])
+    claims_contradicted = len([fc for fc in fact_checks if fc.verdict == "contradicted"])
+    claims_uncertain = len([fc for fc in fact_checks if fc.verdict == "uncertain"])
+    
+    # Calculate factuality score
+    if claims_verified > 0:
+        support_rate = claims_supported / claims_verified
+        contradiction_penalty = claims_contradicted / claims_verified
+        factuality_score = max(0.0, support_rate - contradiction_penalty - (hallucination_risk * 0.3))
+    else:
+        # No verifiable claims - base on hallucination risk
+        factuality_score = max(0.3, 0.7 - hallucination_risk)
+    
+    # Calculate confidence
+    if fact_checks:
+        avg_confidence = sum(fc.confidence for fc in fact_checks) / len(fact_checks)
+        confidence = avg_confidence
+    else:
+        confidence = 0.5
+    
+    # Determine reliability
+    reliable = True
+    if factuality_score < 0.5:
+        reliable = False
+    if hallucination_risk > app_state.factuality_config.hallucination_threshold:
+        reliable = False
+    if claims_contradicted > claims_supported:
+        reliable = False
+    
+    # Collect unsupported claims
+    unsupported_claims = [
+        fc.claim.text for fc in fact_checks
+        if fc.verdict in ["contradicted", "uncertain"]
+    ]
+    
+    # Count sources
+    sources_cited = answer.count("[") + answer.count("(http")
+    
+    factuality_check = FactualityCheck(
+        query_id=query_id,
+        query=query,
+        answer=answer,
+        model=model,
+        timestamp=datetime.now().isoformat(),
+        claims_extracted=claims,
+        claims_verified=claims_verified,
+        claims_supported=claims_supported,
+        claims_contradicted=claims_contradicted,
+        claims_uncertain=claims_uncertain,
+        fact_checks=fact_checks,
+        hallucination_indicators=hallucination_indicators,
+        hallucination_risk=hallucination_risk,
+        factuality_score=factuality_score,
+        confidence=confidence,
+        reliable=reliable,
+        context_available=context is not None,
+        sources_cited=sources_cited,
+        unsupported_claims=unsupported_claims
+    )
+    
+    # Store check
+    app_state.factuality_checks.append(factuality_check)
+    
+    # Keep only last 500
+    if len(app_state.factuality_checks) > 500:
+        app_state.factuality_checks = app_state.factuality_checks[-500:]
+    
+    logger.info("factuality_check", query_id=query_id, score=factuality_score, reliable=reliable)
+    
+    return factuality_check
+
+# Factuality Checking API Endpoints
+@app.post("/factuality/check")
+async def check_factuality_endpoint(
+    query_id: str,
+    query: str,
+    answer: str,
+    model: str,
+    context: Optional[str] = None
+):
+    """Check factuality of an answer"""
+    check = await check_factuality(query_id, query, answer, model, context)
+    return check
+
+@app.get("/factuality/config")
+async def get_factuality_config():
+    """Get factuality checking configuration"""
+    return app_state.factuality_config
+
+@app.put("/factuality/config")
+async def update_factuality_config(config: FactualityConfig):
+    """Update factuality checking configuration"""
+    app_state.factuality_config = config
+    logger.info("updated_factuality_config", enabled=config.enabled)
+    return config
+
+@app.get("/factuality/history")
+async def get_factuality_history(limit: int = 50):
+    """Get recent factuality checks"""
+    return {"checks": app_state.factuality_checks[-limit:]}
+
+@app.get("/factuality/stats")
+async def get_factuality_stats():
+    """Get factuality checking statistics"""
+    if not app_state.factuality_checks:
+        return {
+            "total_checks": 0,
+            "avg_factuality_score": 0,
+            "reliability_rate": 0,
+            "avg_hallucination_risk": 0,
+            "claims_verified": 0,
+            "support_rate": 0
+        }
+    
+    total = len(app_state.factuality_checks)
+    avg_score = sum(fc.factuality_score for fc in app_state.factuality_checks) / total
+    reliable_count = sum(1 for fc in app_state.factuality_checks if fc.reliable)
+    reliability_rate = reliable_count / total
+    avg_hallucination = sum(fc.hallucination_risk for fc in app_state.factuality_checks) / total
+    
+    total_verified = sum(fc.claims_verified for fc in app_state.factuality_checks)
+    total_supported = sum(fc.claims_supported for fc in app_state.factuality_checks)
+    support_rate = total_supported / total_verified if total_verified > 0 else 0
+    
+    return {
+        "total_checks": total,
+        "avg_factuality_score": round(avg_score, 3),
+        "reliability_rate": round(reliability_rate, 3),
+        "avg_hallucination_risk": round(avg_hallucination, 3),
+        "claims_verified": total_verified,
+        "support_rate": round(support_rate, 3)
     }
 
 # Model Ensemble Management Endpoints
