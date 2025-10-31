@@ -88,11 +88,32 @@ class AppState:
     field_encryptor: Optional['FieldEncryptor'] = None  # Field encryptor
     usage_metrics: List[UsageMetric] = []  # Usage metrics history
     analytics_config: 'AnalyticsConfig' = None  # Analytics configuration
+    cost_entries: List[CostEntry] = []  # Cost tracking history
+    cost_config: 'CostConfig' = None  # Cost configuration
+    model_pricing: Dict[str, ModelPricing] = {}  # Model pricing data
+    budget_alerts: List[BudgetAlert] = []  # Budget alerts
 
 app_state = AppState()
 app_state.audit_config = AuditConfig()
 app_state.analytics_config = AnalyticsConfig()
+app_state.cost_config = CostConfig()
 app_state.start_time = datetime.utcnow()  # Track uptime
+
+# Initialize default model pricing (Ollama is free, but we track for comparison)
+app_state.model_pricing = {
+    "llama2": ModelPricing(model_name="llama2", cost_per_1k_input_tokens=0.0, cost_per_1k_output_tokens=0.0),
+    "llama3.1": ModelPricing(model_name="llama3.1", cost_per_1k_input_tokens=0.0, cost_per_1k_output_tokens=0.0),
+    "mistral": ModelPricing(model_name="mistral", cost_per_1k_input_tokens=0.0, cost_per_1k_output_tokens=0.0),
+    "mixtral": ModelPricing(model_name="mixtral", cost_per_1k_input_tokens=0.0, cost_per_1k_output_tokens=0.0),
+    "qwen2.5-coder": ModelPricing(model_name="qwen2.5-coder", cost_per_1k_input_tokens=0.0, cost_per_1k_output_tokens=0.0),
+    "deepseek-coder": ModelPricing(model_name="deepseek-coder", cost_per_1k_input_tokens=0.0, cost_per_1k_output_tokens=0.0),
+    "codellama": ModelPricing(model_name="codellama", cost_per_1k_input_tokens=0.0, cost_per_1k_output_tokens=0.0),
+    # For comparison with cloud providers (if switching)
+    "gpt-4": ModelPricing(model_name="gpt-4", cost_per_1k_input_tokens=0.03, cost_per_1k_output_tokens=0.06),
+    "gpt-3.5-turbo": ModelPricing(model_name="gpt-3.5-turbo", cost_per_1k_input_tokens=0.0015, cost_per_1k_output_tokens=0.002),
+    "claude-3-opus": ModelPricing(model_name="claude-3-opus", cost_per_1k_input_tokens=0.015, cost_per_1k_output_tokens=0.075),
+    "claude-3-sonnet": ModelPricing(model_name="claude-3-sonnet", cost_per_1k_input_tokens=0.003, cost_per_1k_output_tokens=0.015),
+}
 
 # Initialize encryption if key is provided
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_MASTER_KEY")
@@ -969,6 +990,80 @@ class AnalyticsConfig(BaseModel):
     track_user_behavior: bool = True
     retention_days: int = 90
     aggregation_interval_minutes: int = 60
+
+# Cost Tracking Models
+class ModelPricing(BaseModel):
+    """Pricing for a specific model"""
+    model_name: str
+    cost_per_1k_input_tokens: float
+    cost_per_1k_output_tokens: float
+    cost_per_request: float = 0.0
+    currency: str = "USD"
+
+class CostEntry(BaseModel):
+    """Individual cost entry"""
+    timestamp: datetime
+    model_name: str
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    input_cost: float
+    output_cost: float
+    request_cost: float
+    total_cost: float
+    query_type: Optional[str] = None
+    user_id: Optional[str] = None
+    metadata: Dict[str, Any] = {}
+
+class CostSummary(BaseModel):
+    """Cost summary for a period"""
+    period: str
+    start_date: datetime
+    end_date: datetime
+    total_cost: float
+    total_tokens: int
+    total_requests: int
+    average_cost_per_request: float
+    cost_by_model: Dict[str, float]
+    cost_by_day: List[Dict[str, Any]]
+
+class CostBreakdown(BaseModel):
+    """Detailed cost breakdown"""
+    total_cost: float
+    input_tokens_cost: float
+    output_tokens_cost: float
+    request_cost: float
+    cost_by_model: Dict[str, float]
+    cost_by_query_type: Dict[str, float]
+    top_cost_queries: List[Dict[str, Any]]
+
+class BudgetAlert(BaseModel):
+    """Budget alert configuration"""
+    id: str
+    name: str
+    budget_amount: float
+    period: str  # daily, weekly, monthly
+    threshold_percentage: float = 80.0  # Alert at 80%
+    enabled: bool = True
+    email_notifications: List[str] = []
+
+class CostForecast(BaseModel):
+    """Cost forecast"""
+    forecast_date: date
+    predicted_cost: float
+    confidence_interval_low: float
+    confidence_interval_high: float
+    basis: str  # "trend", "average", "peak"
+
+class CostConfig(BaseModel):
+    """Cost tracking configuration"""
+    enabled: bool = True
+    track_token_costs: bool = True
+    track_api_costs: bool = True
+    default_currency: str = "USD"
+    retention_days: int = 365
+    enable_forecasting: bool = True
+    enable_budget_alerts: bool = True
 
 class SystemStats(BaseModel):
     """System statistics"""
@@ -5007,6 +5102,380 @@ async def clear_analytics_metrics(older_than_days: Optional[int] = None):
         "message": f"Cleared {removed_count} metrics",
         "remaining": len(app_state.usage_metrics)
     }
+
+# Cost Tracking Functions
+def calculate_cost(
+    model_name: str,
+    input_tokens: int,
+    output_tokens: int,
+    query_type: Optional[str] = None,
+    user_id: Optional[str] = None,
+    metadata: Optional[Dict] = None
+) -> CostEntry:
+    """Calculate cost for a query"""
+    if not app_state.cost_config.enabled:
+        return None
+    
+    # Get pricing for model (default to free if not found)
+    pricing = app_state.model_pricing.get(
+        model_name,
+        ModelPricing(model_name=model_name, cost_per_1k_input_tokens=0.0, cost_per_1k_output_tokens=0.0)
+    )
+    
+    # Calculate costs
+    input_cost = (input_tokens / 1000) * pricing.cost_per_1k_input_tokens
+    output_cost = (output_tokens / 1000) * pricing.cost_per_1k_output_tokens
+    request_cost = pricing.cost_per_request
+    total_cost = input_cost + output_cost + request_cost
+    
+    entry = CostEntry(
+        timestamp=datetime.utcnow(),
+        model_name=model_name,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=input_tokens + output_tokens,
+        input_cost=round(input_cost, 6),
+        output_cost=round(output_cost, 6),
+        request_cost=round(request_cost, 6),
+        total_cost=round(total_cost, 6),
+        query_type=query_type,
+        user_id=user_id,
+        metadata=metadata or {}
+    )
+    
+    app_state.cost_entries.append(entry)
+    
+    # Cleanup old entries
+    if len(app_state.cost_entries) > 100000:
+        cutoff_date = datetime.utcnow() - timedelta(days=app_state.cost_config.retention_days)
+        app_state.cost_entries = [
+            e for e in app_state.cost_entries
+            if e.timestamp > cutoff_date
+        ]
+    
+    # Check budget alerts
+    check_budget_alerts()
+    
+    return entry
+
+def get_cost_summary(
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    period: str = "day"
+) -> CostSummary:
+    """Get cost summary for a period"""
+    if not end_date:
+        end_date = datetime.utcnow()
+    if not start_date:
+        start_date = end_date - timedelta(days=30)
+    
+    # Filter entries
+    entries = [
+        e for e in app_state.cost_entries
+        if start_date <= e.timestamp <= end_date
+    ]
+    
+    if not entries:
+        return CostSummary(
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            total_cost=0.0,
+            total_tokens=0,
+            total_requests=0,
+            average_cost_per_request=0.0,
+            cost_by_model={},
+            cost_by_day=[]
+        )
+    
+    # Calculate totals
+    total_cost = sum(e.total_cost for e in entries)
+    total_tokens = sum(e.total_tokens for e in entries)
+    total_requests = len(entries)
+    avg_cost = total_cost / total_requests if total_requests > 0 else 0.0
+    
+    # Cost by model
+    cost_by_model: Dict[str, float] = {}
+    for entry in entries:
+        cost_by_model[entry.model_name] = cost_by_model.get(entry.model_name, 0.0) + entry.total_cost
+    
+    # Cost by day
+    cost_by_day: Dict[str, float] = {}
+    for entry in entries:
+        day_key = entry.timestamp.strftime("%Y-%m-%d")
+        cost_by_day[day_key] = cost_by_day.get(day_key, 0.0) + entry.total_cost
+    
+    cost_by_day_list = [
+        {"date": day, "cost": round(cost, 4)}
+        for day, cost in sorted(cost_by_day.items())
+    ]
+    
+    return CostSummary(
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+        total_cost=round(total_cost, 4),
+        total_tokens=total_tokens,
+        total_requests=total_requests,
+        average_cost_per_request=round(avg_cost, 6),
+        cost_by_model={k: round(v, 4) for k, v in cost_by_model.items()},
+        cost_by_day=cost_by_day_list
+    )
+
+def get_cost_breakdown(
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None
+) -> CostBreakdown:
+    """Get detailed cost breakdown"""
+    if not end_date:
+        end_date = datetime.utcnow()
+    if not start_date:
+        start_date = end_date - timedelta(days=30)
+    
+    entries = [
+        e for e in app_state.cost_entries
+        if start_date <= e.timestamp <= end_date
+    ]
+    
+    if not entries:
+        return CostBreakdown(
+            total_cost=0.0,
+            input_tokens_cost=0.0,
+            output_tokens_cost=0.0,
+            request_cost=0.0,
+            cost_by_model={},
+            cost_by_query_type={},
+            top_cost_queries=[]
+        )
+    
+    # Totals
+    total_cost = sum(e.total_cost for e in entries)
+    input_cost = sum(e.input_cost for e in entries)
+    output_cost = sum(e.output_cost for e in entries)
+    request_cost = sum(e.request_cost for e in entries)
+    
+    # By model
+    cost_by_model: Dict[str, float] = {}
+    for entry in entries:
+        cost_by_model[entry.model_name] = cost_by_model.get(entry.model_name, 0.0) + entry.total_cost
+    
+    # By query type
+    cost_by_query_type: Dict[str, float] = {}
+    for entry in entries:
+        qtype = entry.query_type or "unknown"
+        cost_by_query_type[qtype] = cost_by_query_type.get(qtype, 0.0) + entry.total_cost
+    
+    # Top cost queries
+    sorted_entries = sorted(entries, key=lambda x: x.total_cost, reverse=True)[:10]
+    top_queries = [
+        {
+            "timestamp": e.timestamp.isoformat(),
+            "model": e.model_name,
+            "tokens": e.total_tokens,
+            "cost": round(e.total_cost, 6),
+            "query_type": e.query_type
+        }
+        for e in sorted_entries
+    ]
+    
+    return CostBreakdown(
+        total_cost=round(total_cost, 4),
+        input_tokens_cost=round(input_cost, 4),
+        output_tokens_cost=round(output_cost, 4),
+        request_cost=round(request_cost, 4),
+        cost_by_model={k: round(v, 4) for k, v in cost_by_model.items()},
+        cost_by_query_type={k: round(v, 4) for k, v in cost_by_query_type.items()},
+        top_cost_queries=top_queries
+    )
+
+def forecast_costs(days_ahead: int = 30) -> List[CostForecast]:
+    """Forecast future costs based on historical data"""
+    if not app_state.cost_config.enable_forecasting:
+        return []
+    
+    # Get last 30 days of data
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=30)
+    
+    entries = [
+        e for e in app_state.cost_entries
+        if start_date <= e.timestamp <= end_date
+    ]
+    
+    if not entries:
+        return []
+    
+    # Calculate daily averages
+    daily_costs: Dict[str, float] = {}
+    for entry in entries:
+        day_key = entry.timestamp.strftime("%Y-%m-%d")
+        daily_costs[day_key] = daily_costs.get(day_key, 0.0) + entry.total_cost
+    
+    # Simple forecasting based on average
+    daily_values = list(daily_costs.values())
+    avg_daily_cost = sum(daily_values) / len(daily_values) if daily_values else 0.0
+    
+    # Calculate trend (simple linear)
+    if len(daily_values) >= 7:
+        recent_avg = sum(daily_values[-7:]) / 7
+        older_avg = sum(daily_values[:7]) / 7 if len(daily_values) >= 14 else avg_daily_cost
+        trend_factor = recent_avg / older_avg if older_avg > 0 else 1.0
+    else:
+        trend_factor = 1.0
+    
+    # Generate forecasts
+    forecasts = []
+    for i in range(1, days_ahead + 1):
+        forecast_date = (end_date + timedelta(days=i)).date()
+        predicted_cost = avg_daily_cost * (trend_factor ** (i / 30))  # Compound trend
+        
+        # Confidence intervals (±20%)
+        confidence_low = predicted_cost * 0.8
+        confidence_high = predicted_cost * 1.2
+        
+        forecasts.append(CostForecast(
+            forecast_date=forecast_date,
+            predicted_cost=round(predicted_cost, 4),
+            confidence_interval_low=round(confidence_low, 4),
+            confidence_interval_high=round(confidence_high, 4),
+            basis="trend"
+        ))
+    
+    return forecasts
+
+def check_budget_alerts():
+    """Check if any budget alerts should be triggered"""
+    for alert in app_state.budget_alerts:
+        if not alert.enabled:
+            continue
+        
+        # Get period dates
+        now = datetime.utcnow()
+        if alert.period == "daily":
+            start_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif alert.period == "weekly":
+            start_date = now - timedelta(days=now.weekday())
+            start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        elif alert.period == "monthly":
+            start_date = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        else:
+            continue
+        
+        # Calculate current spending
+        summary = get_cost_summary(start_date, now, alert.period)
+        percentage = (summary.total_cost / alert.budget_amount * 100) if alert.budget_amount > 0 else 0
+        
+        # Trigger alert if threshold exceeded
+        if percentage >= alert.threshold_percentage:
+            logger.warning(
+                "budget_alert_triggered",
+                alert_name=alert.name,
+                budget=alert.budget_amount,
+                spent=summary.total_cost,
+                percentage=percentage
+            )
+
+# Cost Tracking API Endpoints
+@app.get("/costs/config")
+async def get_cost_config():
+    """Get cost tracking configuration"""
+    return app_state.cost_config
+
+@app.put("/costs/config")
+async def update_cost_config(config: CostConfig):
+    """Update cost tracking configuration"""
+    app_state.cost_config = config
+    logger.info("cost_config_updated", enabled=config.enabled)
+    return config
+
+@app.get("/costs/pricing")
+async def get_model_pricing():
+    """Get model pricing data"""
+    return list(app_state.model_pricing.values())
+
+@app.post("/costs/pricing")
+async def update_model_pricing(pricing: ModelPricing):
+    """Update pricing for a model"""
+    app_state.model_pricing[pricing.model_name] = pricing
+    logger.info("model_pricing_updated", model=pricing.model_name)
+    return pricing
+
+@app.get("/costs/summary")
+async def get_cost_summary_endpoint(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    period: str = "day"
+):
+    """Get cost summary"""
+    start = datetime.fromisoformat(start_date) if start_date else None
+    end = datetime.fromisoformat(end_date) if end_date else None
+    return get_cost_summary(start, end, period)
+
+@app.get("/costs/breakdown")
+async def get_cost_breakdown_endpoint(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+):
+    """Get detailed cost breakdown"""
+    start = datetime.fromisoformat(start_date) if start_date else None
+    end = datetime.fromisoformat(end_date) if end_date else None
+    return get_cost_breakdown(start, end)
+
+@app.get("/costs/forecast")
+async def get_cost_forecast(days: int = 30):
+    """Get cost forecast"""
+    return forecast_costs(days)
+
+@app.get("/costs/entries")
+async def get_cost_entries(
+    limit: int = 100,
+    model: Optional[str] = None
+):
+    """Get recent cost entries"""
+    entries = app_state.cost_entries[-limit:]
+    if model:
+        entries = [e for e in entries if e.model_name == model]
+    return entries
+
+@app.post("/costs/calculate")
+async def calculate_cost_endpoint(
+    model_name: str,
+    input_tokens: int,
+    output_tokens: int,
+    query_type: Optional[str] = None
+):
+    """Calculate cost for a query"""
+    return calculate_cost(model_name, input_tokens, output_tokens, query_type)
+
+# Budget Alerts
+@app.get("/costs/alerts")
+async def get_budget_alerts():
+    """Get all budget alerts"""
+    return app_state.budget_alerts
+
+@app.post("/costs/alerts")
+async def create_budget_alert(alert: BudgetAlert):
+    """Create a budget alert"""
+    app_state.budget_alerts.append(alert)
+    logger.info("budget_alert_created", alert_id=alert.id, budget=alert.budget_amount)
+    return alert
+
+@app.put("/costs/alerts/{alert_id}")
+async def update_budget_alert(alert_id: str, alert: BudgetAlert):
+    """Update a budget alert"""
+    for i, a in enumerate(app_state.budget_alerts):
+        if a.id == alert_id:
+            app_state.budget_alerts[i] = alert
+            logger.info("budget_alert_updated", alert_id=alert_id)
+            return alert
+    raise HTTPException(status_code=404, detail="Alert not found")
+
+@app.delete("/costs/alerts/{alert_id}")
+async def delete_budget_alert(alert_id: str):
+    """Delete a budget alert"""
+    app_state.budget_alerts = [a for a in app_state.budget_alerts if a.id != alert_id]
+    logger.info("budget_alert_deleted", alert_id=alert_id)
+    return {"message": "Alert deleted"}
 
 # Model Ensemble Management Endpoints
 @app.post("/ensembles", response_model=EnsembleConfig)

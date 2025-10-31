@@ -158,7 +158,7 @@ Future development plans and enhancement ideas for the dual RAG system.
 ### Administration
 - [x] Admin dashboard ✅ **(v1.17.0 - Completed)**
 - [x] Usage analytics ✅ **(v1.16.0 - Completed)**
-- [ ] Cost tracking
+- [x] Cost tracking ✅ **(v1.18.0 - Completed)**
 - [ ] Resource allocation
 - [ ] Backup and restore
 - [ ] Disaster recovery

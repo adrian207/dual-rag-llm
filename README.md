@@ -1,6 +1,6 @@
 # Dual RAG LLM System
 
-[![Version](https://img.shields.io/badge/version-1.17.0-blue.svg)](https://github.com/adrian207/dual-rag-llm/releases)
+[![Version](https://img.shields.io/badge/version-1.18.0-blue.svg)](https://github.com/adrian207/dual-rag-llm/releases)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/docker-20.10+-blue.svg)](https://www.docker.com/)
@@ -64,6 +64,16 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 ```
 
 ## Key Features
+
+### 💰 Cost Tracking & Budget Management (v1.18.0)
+- **Comprehensive Cost Tracking**: Track all query costs with token-level precision
+- **Model Pricing Database**: Pre-configured pricing for Ollama (free) and cloud providers (comparison)
+- **Cost Analytics**: Daily trends, cost by model, cost by query type, top cost queries
+- **Budget Alerts**: Set daily/weekly/monthly budgets with threshold notifications
+- **Cost Forecasting**: 30/90-day cost predictions based on historical trends
+- **Savings Calculator**: Compare Ollama costs vs cloud provider costs
+- **Cost Breakdown**: Input tokens, output tokens, and request-level costs
+- **12 API Endpoints**: Complete cost management and analysis
 
 ### 🎛️ Enterprise Admin Dashboard (v1.17.0)
 - **Comprehensive Management Interface**: Professional React-based admin dashboard with 6 major sections
@@ -725,18 +735,18 @@ request_timeout = 120.0       # LLM request timeout (seconds)
 
 ## Version History
 
-**Current Version:** 1.17.0 (October 31, 2024)
+**Current Version:** 1.18.0 (October 31, 2024)
 
 See [CHANGELOG.md](CHANGELOG.md) for complete release notes.
 
 **Recent Releases:**
+- **v1.18.0** - Cost Tracking & Budget Management (forecasting, alerts, analytics)
 - **v1.17.0** - Enterprise Admin Dashboard (comprehensive management interface)
 - **v1.16.0** - Usage Analytics (comprehensive tracking, insights, time-series data)
 - **v1.15.0** - Data Encryption (AES-256, TLS 1.2+, key management)
 - **v1.14.0** - Enterprise Audit Logging (24 event types, compliance ready)
-- **v1.13.0** - Modern React Frontend (React 18 + TypeScript + Vite)
 
-[View all 17 releases →](CHANGELOG.md)
+[View all 18 releases →](CHANGELOG.md)
 
 [View all 12 releases →](CHANGELOG.md)
 
@@ -791,16 +801,17 @@ This project builds upon excellent open-source work:
 
 ## Project Stats
 
-- **17 Major Versions** released
-- **Enterprise Admin Dashboard** with 6 management sections
+- **18 Major Versions** released
+- **Cost Tracking & Forecasting** with budget alerts
+- **Enterprise Admin Dashboard** with 7 management sections
 - **Comprehensive Usage Analytics** with AI insights
 - **Modern React Frontend** with TypeScript
 - **Enterprise-Grade Encryption** (AES-256 + TLS 1.2+)
 - **Enterprise Audit Logging** with 24 event types
 - **22 Programming Languages** supported (syntax highlighting)
 - **10 Human Languages** supported (UI + translation)
-- **108+ API Endpoints** documented
-- **7,500+ Lines** of production code
+- **120+ API Endpoints** documented
+- **8,500+ Lines** of production code
 - **3,500+ Lines** of documentation
 - **3+ Billion** potential users (language reach)
 
@@ -813,7 +824,7 @@ If you use this project in your research or production, please cite:
   author = {Johnson, Adrian},
   title = {Dual RAG LLM System: Enterprise RAG with Multi-language Support},
   year = {2024},
-  version = {1.17.0},
+  version = {1.18.0},
   url = {https://github.com/adrian207/dual-rag-llm}
 }
 ```
@@ -821,5 +832,5 @@ If you use this project in your research or production, please cite:
 ---
 
 **Built with ❤️ by Adrian Johnson**  
-**Last Updated:** October 31, 2024 | **Version:** 1.17.0
+**Last Updated:** October 31, 2024 | **Version:** 1.18.0
 
