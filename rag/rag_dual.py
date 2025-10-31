@@ -56,6 +56,7 @@ class AppState:
     models_loaded: set = set()
     cache_stats: Dict[str, int] = {"hits": 0, "misses": 0, "errors": 0}
     tool_usage: Dict[str, int] = {"web_search": 0, "github": 0, "rag": 0}
+    model_performance: Dict[str, Dict[str, Any]] = {}  # Track performance per model
 
 app_state = AppState()
 
@@ -82,6 +83,8 @@ class Query(BaseModel):
     use_web_search: bool = Field(default=False)
     use_github: bool = Field(default=False)
     github_repo: Optional[str] = Field(default=None)
+    model_override: Optional[str] = Field(default=None, description="Override automatic model selection")
+    compare_models: bool = Field(default=False, description="Compare responses from multiple models")
 
 class ToolResult(BaseModel):
     """Result from a tool (web search or GitHub)"""
@@ -116,6 +119,14 @@ class ToolStats(BaseModel):
     rag: int
     total: int
 
+class ModelPerformance(BaseModel):
+    """Model performance metrics"""
+    queries: int
+    total_time: float
+    total_tokens: int
+    avg_tokens_per_sec: float
+    avg_response_time: float
+
 class SystemStats(BaseModel):
     """System statistics"""
     cache: CacheStats
@@ -123,6 +134,7 @@ class SystemStats(BaseModel):
     models_cached: List[str]
     ms_index_loaded: bool
     oss_index_loaded: bool
+    model_performance: Dict[str, ModelPerformance] = {}
 
 # Helper functions
 def generate_cache_key(question: str, file_ext: str, model: str) -> str:
@@ -474,6 +486,11 @@ async def get_stats():
     
     total_tools = sum(app_state.tool_usage.values())
     
+    # Convert model_performance to ModelPerformance objects
+    model_perf_objects = {}
+    for model, stats in app_state.model_performance.items():
+        model_perf_objects[model] = ModelPerformance(**stats)
+    
     return SystemStats(
         cache=CacheStats(
             hits=app_state.cache_stats["hits"],
@@ -490,7 +507,8 @@ async def get_stats():
         ),
         models_cached=list(app_state.models_loaded),
         ms_index_loaded=app_state.ms_index is not None,
-        oss_index_loaded=app_state.oss_index is not None
+        oss_index_loaded=app_state.oss_index is not None,
+        model_performance=model_perf_objects
     )
 
 @app.post("/cache/clear")
@@ -508,18 +526,141 @@ async def clear_cache():
         logger.error("cache_clear_error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/models/available")
+async def get_available_models():
+    """Get list of available models from Ollama"""
+    try:
+        async with app_state.http_client.stream("GET", f"{OLLAMA_API}/api/tags") as response:
+            if response.status_code == 200:
+                data = await response.aread()
+                models_data = json.loads(data)
+                models = [m["name"] for m in models_data.get("models", [])]
+                return {
+                    "available": models,
+                    "loaded": list(app_state.models_loaded),
+                    "performance": app_state.model_performance
+                }
+            else:
+                return {"available": [], "loaded": list(app_state.models_loaded)}
+    except Exception as e:
+        logger.error("failed_to_fetch_models", error=str(e))
+        return {"available": [], "loaded": list(app_state.models_loaded)}
+
+@app.post("/query/compare")
+async def compare_models(q: Query):
+    """Compare responses from multiple models"""
+    logger.info("comparison_request", question_length=len(q.question))
+    
+    # Define models to compare
+    comparison_models = [
+        ("qwen2.5-coder:32b-q4_K_M", "Microsoft"),
+        ("deepseek-coder-v2:33b-q4_K_M", "Open Source")
+    ]
+    
+    # If user specified a model, use it for one of the comparisons
+    if q.model_override and q.model_override not in [m[0] for m in comparison_models]:
+        comparison_models.append((q.model_override, "User Selected"))
+    
+    results = []
+    
+    for model_name, source_type in comparison_models:
+        try:
+            # Track time
+            start_time = time.time()
+            
+            # Ensure model is available
+            model_available = await ensure_model_loaded(model_name)
+            if not model_available:
+                results.append({
+                    "model": model_name,
+                    "source": source_type,
+                    "error": "Model not available",
+                    "response_time": 0
+                })
+                continue
+            
+            # Use the same logic as regular query
+            is_ms = "qwen" in model_name.lower()
+            index = load_index(is_ms)
+            
+            if index is None:
+                results.append({
+                    "model": model_name,
+                    "source": source_type,
+                    "error": "Index not available",
+                    "response_time": 0
+                })
+                continue
+            
+            # Retrieve context
+            retriever = index.as_retriever(similarity_top_k=3)
+            nodes = retriever.retrieve(q.question)
+            context = "\n\n".join([f"[Doc {i+1}]\n{n.text}" for i, n in enumerate(nodes)]) if nodes else "No context available."
+            
+            # Generate response
+            llm = Ollama(model=model_name, request_timeout=120.0, base_url=OLLAMA_API)
+            prompt = f"""Context from documentation:
+{context}
+
+Question: {q.question}
+
+Please provide a detailed answer based on the context above. Include code examples if relevant."""
+            
+            response = llm.complete(prompt)
+            response_time = time.time() - start_time
+            
+            results.append({
+                "model": model_name,
+                "source": source_type,
+                "answer": response.text,
+                "chunks_retrieved": len(nodes),
+                "response_time": round(response_time, 2),
+                "performance": app_state.model_performance.get(model_name, {})
+            })
+            
+        except Exception as e:
+            logger.error("comparison_model_failed", model=model_name, error=str(e))
+            results.append({
+                "model": model_name,
+                "source": source_type,
+                "error": str(e),
+                "response_time": 0
+            })
+    
+    return {
+        "question": q.question,
+        "results": results,
+        "comparison_count": len(results)
+    }
+
 async def generate_streaming_response(q: Query):
     """Generate streaming response for query"""
     try:
-        # Determine routing
-        model_name, source_type = get_model_for_extension(q.file_ext)
-        is_ms = source_type == "Microsoft"
+        # Determine routing (with override support)
+        if q.model_override:
+            model_name = q.model_override
+            # Determine source type based on model name
+            if "qwen" in model_name.lower():
+                source_type = "Microsoft"
+                is_ms = True
+            elif "deepseek" in model_name.lower() or "codellama" in model_name.lower():
+                source_type = "Open Source"
+                is_ms = False
+            else:
+                source_type = "General"
+                is_ms = False
+        else:
+            model_name, source_type = get_model_for_extension(q.file_ext)
+            is_ms = source_type == "Microsoft"
         
         # Send initial status
         yield {
             "event": "status",
             "data": json.dumps({"status": "starting", "model": model_name, "source": source_type})
         }
+        
+        # Track start time for performance metrics
+        start_time = time.time()
         
         # Check cache
         cache_key = generate_cache_key(q.question, q.file_ext, model_name)
@@ -632,12 +773,36 @@ Please provide a detailed answer based on the context above. Include code exampl
         
         # Stream the LLM response
         full_answer = ""
+        token_count = 0
         async for token in llm.astream_complete(prompt):
             full_answer += token.delta
+            token_count += 1
             yield {
                 "event": "token",
                 "data": json.dumps({"token": token.delta})
             }
+        
+        # Calculate performance metrics
+        end_time = time.time()
+        total_time = end_time - start_time
+        tokens_per_second = token_count / total_time if total_time > 0 else 0
+        
+        # Update model performance stats
+        if model_name not in app_state.model_performance:
+            app_state.model_performance[model_name] = {
+                "queries": 0,
+                "total_time": 0,
+                "total_tokens": 0,
+                "avg_tokens_per_sec": 0,
+                "avg_response_time": 0
+            }
+        
+        stats = app_state.model_performance[model_name]
+        stats["queries"] += 1
+        stats["total_time"] += total_time
+        stats["total_tokens"] += token_count
+        stats["avg_tokens_per_sec"] = stats["total_tokens"] / stats["total_time"]
+        stats["avg_response_time"] = stats["total_time"] / stats["queries"]
         
         # Cache the complete response
         result = {
@@ -646,7 +811,12 @@ Please provide a detailed answer based on the context above. Include code exampl
             "source": source_type,
             "chunks_retrieved": len(nodes),
             "tools_used": tools_used,
-            "tool_results": [tr.dict() for tr in tool_results]
+            "tool_results": [tr.dict() for tr in tool_results],
+            "performance": {
+                "response_time": round(total_time, 2),
+                "tokens": token_count,
+                "tokens_per_sec": round(tokens_per_second, 2)
+            }
         }
         
         await set_cached_response(cache_key, result)

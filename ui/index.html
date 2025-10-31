@@ -50,6 +50,10 @@
                             <input type="checkbox" id="useGitHub">
                             <span>🐙 GitHub</span>
                         </label>
+                        <label class="tool-option">
+                            <input type="checkbox" id="compareModels">
+                            <span>🔄 Compare Models</span>
+                        </label>
                         <select id="fileExt" class="file-ext-select">
                             <option value="">Auto-detect</option>
                             <option value=".py">Python (.py)</option>
@@ -60,6 +64,25 @@
                             <option value=".yaml">YAML (.yaml)</option>
                             <option value=".json">JSON (.json)</option>
                             <option value=".md">Markdown (.md)</option>
+                        </select>
+                        <select id="modelSelect" class="model-select">
+                            <option value="">🤖 Auto (Smart Routing)</option>
+                            <optgroup label="Microsoft Technologies">
+                                <option value="qwen2.5-coder:32b-q4_K_M">Qwen 2.5 Coder 32B (Fast)</option>
+                                <option value="qwen2.5-coder:14b">Qwen 2.5 Coder 14B (Faster)</option>
+                                <option value="qwen2.5-coder:7b">Qwen 2.5 Coder 7B (Fastest)</option>
+                            </optgroup>
+                            <optgroup label="Open Source">
+                                <option value="deepseek-coder-v2:33b-q4_K_M">DeepSeek Coder V2 33B (Fast)</option>
+                                <option value="deepseek-coder-v2:16b">DeepSeek Coder V2 16B (Faster)</option>
+                                <option value="codellama:34b">CodeLlama 34B</option>
+                                <option value="codellama:13b">CodeLlama 13B (Faster)</option>
+                            </optgroup>
+                            <optgroup label="General Purpose">
+                                <option value="llama3.1:70b">Llama 3.1 70B (Best)</option>
+                                <option value="llama3.1:8b">Llama 3.1 8B (Fastest)</option>
+                                <option value="mistral:7b">Mistral 7B</option>
+                            </optgroup>
                         </select>
                     </div>
                     <div class="input-row">
