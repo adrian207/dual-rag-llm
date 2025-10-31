@@ -46,7 +46,7 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 ## Key Features
 
 ### 💻 Code Syntax Highlighting (v1.11.0)
-- **21 Languages Supported**: Python, JavaScript, TypeScript, Java, C#, C, C++, Go, Rust, PHP, Ruby, Swift, Kotlin, Bash, SQL, HTML, CSS, JSON, YAML, XML, Markdown
+- **22 Languages Supported**: Python, JavaScript, TypeScript, Java, C#, C, C++, Go, Rust, PHP, Ruby, Swift, Kotlin, **PowerShell**, Bash, SQL, HTML, CSS, JSON, YAML, XML, Markdown
 - **9 Themes**: VS Dark, VS Light, GitHub Dark, GitHub Light, Monokai, Dracula, Nord, Solarized Dark/Light
 - **Advanced Detection**: Pattern-based language detection with 95% confidence
 - **Auto-Enhancement**: Automatic language hints for code blocks

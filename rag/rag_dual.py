@@ -3216,6 +3216,7 @@ def detect_language_advanced(code: str, hint: str = "") -> CodeLanguage:
             "ruby": ("ruby", ["rb"], ".rb", 0.95),
             "swift": ("swift", [], ".swift", 0.95),
             "kotlin": ("kotlin", ["kt"], ".kt", 0.95),
+            "powershell": ("powershell", ["ps1", "ps"], ".ps1", 0.95),
             "bash": ("bash", ["sh", "shell"], ".sh", 0.95),
             "sql": ("sql", [], ".sql", 0.95),
             "html": ("html", [], ".html", 0.95),
@@ -3281,10 +3282,18 @@ def detect_language_advanced(code: str, hint: str = "") -> CodeLanguage:
     if any(word in code_lower for word in ["def ", "end\n", "puts ", "require "]) and "class " in code:
         patterns.append(("ruby", 0.8, ["rb"], ".rb"))
     
+    # PowerShell
+    if any(word in code for word in ["$PSVersionTable", "Get-", "Set-", "New-", "Remove-", "Import-Module"]):
+        patterns.append(("powershell", 0.95, ["ps1", "ps"], ".ps1"))
+    elif code.startswith("#Requires -Version") or "$_" in code or "[CmdletBinding()]" in code:
+        patterns.append(("powershell", 0.9, ["ps1", "ps"], ".ps1"))
+    elif any(word in code for word in ["Write-Host", "Write-Output", "param(", "foreach (", "-ErrorAction"]):
+        patterns.append(("powershell", 0.85, ["ps1", "ps"], ".ps1"))
+    
     # Bash
     if code.startswith("#!/bin/bash") or code.startswith("#!/bin/sh"):
         patterns.append(("bash", 0.95, ["sh", "shell"], ".sh"))
-    elif any(word in code for word in ["echo ", "chmod ", "mkdir ", "export "]):
+    elif any(word in code for word in ["echo ", "chmod ", "mkdir ", "export "]) and not any(word in code for word in ["Write-", "Get-", "Set-"]):
         patterns.append(("bash", 0.7, ["sh", "shell"], ".sh"))
     
     # SQL
@@ -3415,7 +3424,8 @@ def highlight_code(code: str, language: str, theme: HighlightTheme = HighlightTh
         "javascript": ["function", "const", "let", "var", "return", "if", "else", "for", "while", "try", "catch", "finally", "async", "await", "class", "extends", "import", "export"],
         "java": ["public", "private", "protected", "class", "interface", "extends", "implements", "return", "if", "else", "for", "while", "try", "catch", "finally", "new", "void", "int", "String"],
         "go": ["func", "package", "import", "return", "if", "else", "for", "range", "defer", "go", "chan", "var", "const", "type", "struct", "interface"],
-        "rust": ["fn", "let", "mut", "pub", "mod", "use", "return", "if", "else", "for", "while", "loop", "match", "struct", "enum", "impl", "trait"]
+        "rust": ["fn", "let", "mut", "pub", "mod", "use", "return", "if", "else", "for", "while", "loop", "match", "struct", "enum", "impl", "trait"],
+        "powershell": ["param", "function", "Get-", "Set-", "New-", "Remove-", "Write-Host", "Write-Output", "foreach", "if", "else", "elseif", "switch", "try", "catch", "finally"]
     }
     
     keywords = keywords_map.get(language, [])
@@ -3516,6 +3526,7 @@ async def get_supported_languages():
             {"name": "Ruby", "id": "ruby", "extensions": [".rb"]},
             {"name": "Swift", "id": "swift", "extensions": [".swift"]},
             {"name": "Kotlin", "id": "kotlin", "extensions": [".kt"]},
+            {"name": "PowerShell", "id": "powershell", "extensions": [".ps1", ".psm1"]},
             {"name": "Bash", "id": "bash", "extensions": [".sh"]},
             {"name": "SQL", "id": "sql", "extensions": [".sql"]},
             {"name": "HTML", "id": "html", "extensions": [".html"]},
