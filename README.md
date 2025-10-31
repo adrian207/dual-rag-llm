@@ -45,6 +45,16 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 
 ## Key Features
 
+### 🎯 Model Ensemble Strategies (v1.6.0)
+- **6 Ensemble Strategies**: Voting, Averaging, Cascade, Best-of-N, Specialist, Consensus
+- **Parallel Execution**: Run multiple models simultaneously for speed
+- **Weighted Combinations**: Assign importance to different models
+- **Cascade Fallback**: Fast models first, powerful models if needed
+- **Specialist Routing**: Auto-route questions to domain experts
+- **Consensus Building**: Require agreement threshold for critical decisions
+- **Performance Tracking**: Monitor ensemble effectiveness
+- **Interactive Dashboard**: Create, test, and manage ensembles
+
 ### 🔧 Custom Model Fine-tuning (v1.5.0)
 - **Dataset Management**: Upload and validate training datasets (Chat, Instruct, Q&A, Completion formats)
 - **LoRA/QLoRA Training**: Efficient fine-tuning with Low-Rank Adaptation

@@ -66,6 +66,8 @@ class AppState:
     datasets: Dict[str, DatasetConfig] = {}  # Fine-tuning datasets
     finetuning_jobs: Dict[str, FineTuningConfig] = {}  # Fine-tuning jobs
     model_versions: Dict[str, ModelVersion] = {}  # Fine-tuned model registry
+    ensembles: Dict[str, EnsembleConfig] = {}  # Model ensembles
+    ensemble_results: Dict[str, List[EnsembleResult]] = {}  # Ensemble results
 
 app_state = AppState()
 
@@ -96,6 +98,7 @@ class Query(BaseModel):
     compare_models: bool = Field(default=False, description="Compare responses from multiple models")
     ab_test_id: Optional[str] = Field(default=None, description="Participate in A/B test")
     query_id: Optional[str] = Field(default=None, description="Unique query ID for tracking")
+    ensemble_id: Optional[str] = Field(default=None, description="Use model ensemble")
 
 class ToolResult(BaseModel):
     """Result from a tool (web search or GitHub)"""
@@ -271,6 +274,67 @@ class ModelVersion(BaseModel):
     dataset_id: str
     num_parameters: Optional[int] = None
     model_size_mb: Optional[float] = None
+
+# Model Ensemble Models
+class EnsembleStrategy(str, Enum):
+    """Ensemble combination strategies"""
+    VOTING = "voting"  # Majority vote or weighted voting
+    AVERAGING = "averaging"  # Average or weighted average
+    CASCADE = "cascade"  # Try models in sequence
+    BEST_OF_N = "best_of_n"  # Pick best response
+    SPECIALIST = "specialist"  # Route by domain/type
+    CONSENSUS = "consensus"  # Require agreement threshold
+
+class EnsembleConfig(BaseModel):
+    """Model ensemble configuration"""
+    ensemble_id: str
+    name: str
+    description: str
+    strategy: EnsembleStrategy
+    models: List[str]  # List of model names
+    
+    # Strategy-specific parameters
+    weights: Optional[List[float]] = None  # For weighted strategies
+    threshold: Optional[float] = None  # For consensus
+    routing_rules: Optional[Dict[str, str]] = None  # For specialist
+    
+    # Configuration
+    parallel: bool = True  # Run models in parallel
+    timeout: int = 30  # Timeout per model in seconds
+    min_responses: int = 1  # Minimum successful responses
+    
+    # Metadata
+    created_at: str
+    enabled: bool = True
+    usage_count: int = 0
+    
+    # Performance
+    avg_response_time: Optional[float] = None
+    avg_quality_score: Optional[float] = None
+
+class EnsembleResult(BaseModel):
+    """Result from ensemble query"""
+    ensemble_id: str
+    query_id: str
+    question: str
+    strategy: EnsembleStrategy
+    
+    # Individual model responses
+    model_responses: List[Dict[str, Any]]  # [{model, answer, time, confidence}]
+    
+    # Ensemble result
+    final_answer: str
+    confidence_score: float
+    
+    # Metadata
+    models_used: List[str]
+    total_time: float
+    successful_models: int
+    timestamp: str
+    
+    # Strategy-specific
+    voting_breakdown: Optional[Dict[str, int]] = None
+    agreement_score: Optional[float] = None
 
 class SystemStats(BaseModel):
     """System statistics"""
@@ -890,6 +954,395 @@ async def get_available_models():
     except Exception as e:
         logger.error("failed_to_fetch_models", error=str(e))
         return {"available": [], "loaded": list(app_state.models_loaded)}
+
+# Model Ensemble Functions
+async def execute_model_query(model: str, question: str, context: str, timeout: int = 30) -> Dict[str, Any]:
+    """Execute query on a single model"""
+    start_time = time.time()
+    
+    try:
+        prompt = f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer:"
+        
+        async with asyncio.timeout(timeout):
+            async with app_state.http_client.stream(
+                "POST",
+                f"{OLLAMA_API}/api/generate",
+                json={
+                    "model": model,
+                    "prompt": prompt,
+                    "stream": False
+                },
+                timeout=timeout
+            ) as response:
+                if response.status_code != 200:
+                    raise Exception(f"Model returned status {response.status_code}")
+                
+                data = await response.aread()
+                result = json.loads(data)
+                answer = result.get("response", "")
+                
+                response_time = time.time() - start_time
+                
+                # Simple confidence estimation based on response length and coherence
+                confidence = min(1.0, len(answer.split()) / 100)  # Simple heuristic
+                
+                return {
+                    "model": model,
+                    "answer": answer,
+                    "response_time": response_time,
+                    "confidence": confidence,
+                    "success": True,
+                    "error": None
+                }
+    
+    except Exception as e:
+        return {
+            "model": model,
+            "answer": "",
+            "response_time": time.time() - start_time,
+            "confidence": 0.0,
+            "success": False,
+            "error": str(e)
+        }
+
+async def execute_ensemble(
+    ensemble: EnsembleConfig,
+    question: str,
+    context: str
+) -> EnsembleResult:
+    """Execute ensemble query with specified strategy"""
+    start_time = time.time()
+    query_id = str(uuid.uuid4())
+    
+    model_responses = []
+    
+    if ensemble.strategy == EnsembleStrategy.CASCADE:
+        # Try models in sequence until success
+        for model in ensemble.models:
+            response = await execute_model_query(model, question, context, ensemble.timeout)
+            model_responses.append(response)
+            
+            if response["success"] and response["confidence"] >= (ensemble.threshold or 0.5):
+                # Sufficient response, stop cascade
+                break
+    
+    elif ensemble.parallel:
+        # Execute all models in parallel
+        tasks = [
+            execute_model_query(model, question, context, ensemble.timeout)
+            for model in ensemble.models
+        ]
+        model_responses = await asyncio.gather(*tasks, return_exceptions=False)
+    
+    else:
+        # Execute models sequentially
+        for model in ensemble.models:
+            response = await execute_model_query(model, question, context, ensemble.timeout)
+            model_responses.append(response)
+    
+    # Filter successful responses
+    successful_responses = [r for r in model_responses if r["success"]]
+    
+    if len(successful_responses) < ensemble.min_responses:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Only {len(successful_responses)} successful responses, need {ensemble.min_responses}"
+        )
+    
+    # Apply ensemble strategy to combine responses
+    if ensemble.strategy == EnsembleStrategy.VOTING:
+        final_answer, confidence, metadata = apply_voting(successful_responses, ensemble.weights)
+    
+    elif ensemble.strategy == EnsembleStrategy.AVERAGING:
+        final_answer, confidence, metadata = apply_averaging(successful_responses, ensemble.weights)
+    
+    elif ensemble.strategy == EnsembleStrategy.CASCADE:
+        # Use the first successful response
+        final_answer = successful_responses[0]["answer"]
+        confidence = successful_responses[0]["confidence"]
+        metadata = {"cascade_stopped_at": successful_responses[0]["model"]}
+    
+    elif ensemble.strategy == EnsembleStrategy.BEST_OF_N:
+        final_answer, confidence, metadata = apply_best_of_n(successful_responses)
+    
+    elif ensemble.strategy == EnsembleStrategy.SPECIALIST:
+        final_answer, confidence, metadata = apply_specialist(successful_responses, ensemble.routing_rules, question)
+    
+    elif ensemble.strategy == EnsembleStrategy.CONSENSUS:
+        final_answer, confidence, metadata = apply_consensus(successful_responses, ensemble.threshold or 0.7)
+    
+    else:
+        # Default: use first successful response
+        final_answer = successful_responses[0]["answer"]
+        confidence = successful_responses[0]["confidence"]
+        metadata = {}
+    
+    total_time = time.time() - start_time
+    
+    result = EnsembleResult(
+        ensemble_id=ensemble.ensemble_id,
+        query_id=query_id,
+        question=question,
+        strategy=ensemble.strategy,
+        model_responses=model_responses,
+        final_answer=final_answer,
+        confidence_score=confidence,
+        models_used=ensemble.models,
+        total_time=total_time,
+        successful_models=len(successful_responses),
+        timestamp=datetime.now().isoformat(),
+        voting_breakdown=metadata.get("voting_breakdown"),
+        agreement_score=metadata.get("agreement_score")
+    )
+    
+    # Store result
+    if ensemble.ensemble_id not in app_state.ensemble_results:
+        app_state.ensemble_results[ensemble.ensemble_id] = []
+    app_state.ensemble_results[ensemble.ensemble_id].append(result)
+    
+    # Update ensemble stats
+    ensemble.usage_count += 1
+    if ensemble.avg_response_time is None:
+        ensemble.avg_response_time = total_time
+    else:
+        ensemble.avg_response_time = (ensemble.avg_response_time * 0.9) + (total_time * 0.1)
+    
+    return result
+
+def apply_voting(responses: List[Dict[str, Any]], weights: Optional[List[float]] = None) -> tuple:
+    """Voting strategy: select most common answer or weighted vote"""
+    if not responses:
+        raise ValueError("No responses to vote on")
+    
+    # Simple voting: count similar answers
+    answer_votes = {}
+    for i, resp in enumerate(responses):
+        answer = resp["answer"]
+        weight = weights[i] if weights and i < len(weights) else 1.0
+        
+        # Group similar answers (simplified)
+        answer_key = answer[:100]  # Use first 100 chars as key
+        if answer_key not in answer_votes:
+            answer_votes[answer_key] = {"full_answer": answer, "votes": 0, "confidence": []}
+        
+        answer_votes[answer_key]["votes"] += weight
+        answer_votes[answer_key]["confidence"].append(resp["confidence"])
+    
+    # Select winner
+    winner = max(answer_votes.items(), key=lambda x: x[1]["votes"])
+    final_answer = winner[1]["full_answer"]
+    avg_confidence = sum(winner[1]["confidence"]) / len(winner[1]["confidence"])
+    
+    voting_breakdown = {k[:50]: v["votes"] for k, v in answer_votes.items()}
+    
+    return final_answer, avg_confidence, {"voting_breakdown": voting_breakdown}
+
+def apply_averaging(responses: List[Dict[str, Any]], weights: Optional[List[float]] = None) -> tuple:
+    """Averaging strategy: combine answers (for compatible responses)"""
+    if not responses:
+        raise ValueError("No responses to average")
+    
+    # For text, we use weighted selection based on confidence
+    if weights:
+        total_weight = sum(weights[:len(responses)])
+        weighted_confidences = [
+            resp["confidence"] * (weights[i] / total_weight)
+            for i, resp in enumerate(responses)
+        ]
+    else:
+        weighted_confidences = [resp["confidence"] for resp in responses]
+    
+    # Select response with highest weighted confidence
+    best_idx = weighted_confidences.index(max(weighted_confidences))
+    final_answer = responses[best_idx]["answer"]
+    avg_confidence = sum(r["confidence"] for r in responses) / len(responses)
+    
+    return final_answer, avg_confidence, {"selected_model": responses[best_idx]["model"]}
+
+def apply_best_of_n(responses: List[Dict[str, Any]]) -> tuple:
+    """Best-of-N: select response with highest confidence"""
+    if not responses:
+        raise ValueError("No responses to select from")
+    
+    best = max(responses, key=lambda x: x["confidence"])
+    
+    return best["answer"], best["confidence"], {
+        "selected_model": best["model"],
+        "confidence_scores": {r["model"]: r["confidence"] for r in responses}
+    }
+
+def apply_specialist(responses: List[Dict[str, Any]], routing_rules: Optional[Dict[str, str]], question: str) -> tuple:
+    """Specialist: route based on question type"""
+    if not responses:
+        raise ValueError("No responses available")
+    
+    # Detect question type
+    question_lower = question.lower()
+    question_type = "general"
+    
+    if any(word in question_lower for word in ["code", "function", "debug", "implement"]):
+        question_type = "code"
+    elif any(word in question_lower for word in ["explain", "what is", "how does"]):
+        question_type = "explanation"
+    elif any(word in question_lower for word in ["debug", "error", "fix", "problem"]):
+        question_type = "debugging"
+    
+    # Use routing rules if provided
+    if routing_rules and question_type in routing_rules:
+        preferred_model = routing_rules[question_type]
+        for resp in responses:
+            if resp["model"] == preferred_model:
+                return resp["answer"], resp["confidence"], {
+                    "question_type": question_type,
+                    "selected_model": preferred_model
+                }
+    
+    # Fall back to best confidence
+    best = max(responses, key=lambda x: x["confidence"])
+    return best["answer"], best["confidence"], {
+        "question_type": question_type,
+        "selected_model": best["model"]
+    }
+
+def apply_consensus(responses: List[Dict[str, Any]], threshold: float = 0.7) -> tuple:
+    """Consensus: require agreement between models"""
+    if not responses:
+        raise ValueError("No responses available")
+    
+    # Calculate similarity between responses (simplified)
+    answer_groups = {}
+    for resp in responses:
+        answer_key = resp["answer"][:100]
+        if answer_key not in answer_groups:
+            answer_groups[answer_key] = []
+        answer_groups[answer_key].append(resp)
+    
+    # Check if any group meets threshold
+    for answer_key, group in answer_groups.items():
+        agreement = len(group) / len(responses)
+        if agreement >= threshold:
+            # Use answer from highest confidence in group
+            best = max(group, key=lambda x: x["confidence"])
+            return best["answer"], best["confidence"], {
+                "agreement_score": agreement,
+                "models_agreed": [r["model"] for r in group]
+            }
+    
+    # No consensus, use highest confidence
+    best = max(responses, key=lambda x: x["confidence"])
+    return best["answer"], best["confidence"], {
+        "agreement_score": 1/len(responses),
+        "models_agreed": [best["model"]],
+        "consensus_failed": True
+    }
+
+# Model Ensemble Management Endpoints
+@app.post("/ensembles", response_model=EnsembleConfig)
+async def create_ensemble(
+    name: str,
+    description: str,
+    strategy: EnsembleStrategy,
+    models: List[str],
+    weights: Optional[List[float]] = None,
+    threshold: Optional[float] = None,
+    routing_rules: Optional[Dict[str, str]] = None,
+    parallel: bool = True,
+    timeout: int = 30,
+    min_responses: int = 1
+):
+    """Create a new model ensemble"""
+    ensemble_id = str(uuid.uuid4())
+    
+    # Validate weights if provided
+    if weights and len(weights) != len(models):
+        raise HTTPException(status_code=400, detail="Weights must match number of models")
+    
+    # Normalize weights
+    if weights:
+        total = sum(weights)
+        weights = [w / total for w in weights]
+    
+    ensemble = EnsembleConfig(
+        ensemble_id=ensemble_id,
+        name=name,
+        description=description,
+        strategy=strategy,
+        models=models,
+        weights=weights,
+        threshold=threshold,
+        routing_rules=routing_rules,
+        parallel=parallel,
+        timeout=timeout,
+        min_responses=min_responses,
+        created_at=datetime.now().isoformat()
+    )
+    
+    app_state.ensembles[ensemble_id] = ensemble
+    logger.info("ensemble_created", ensemble_id=ensemble_id, name=name, strategy=strategy)
+    
+    return ensemble
+
+@app.get("/ensembles")
+async def list_ensembles():
+    """List all model ensembles"""
+    return {"ensembles": list(app_state.ensembles.values())}
+
+@app.get("/ensembles/{ensemble_id}", response_model=EnsembleConfig)
+async def get_ensemble(ensemble_id: str):
+    """Get ensemble details"""
+    if ensemble_id not in app_state.ensembles:
+        raise HTTPException(status_code=404, detail="Ensemble not found")
+    return app_state.ensembles[ensemble_id]
+
+@app.put("/ensembles/{ensemble_id}/toggle")
+async def toggle_ensemble(ensemble_id: str):
+    """Enable/disable ensemble"""
+    if ensemble_id not in app_state.ensembles:
+        raise HTTPException(status_code=404, detail="Ensemble not found")
+    
+    ensemble = app_state.ensembles[ensemble_id]
+    ensemble.enabled = not ensemble.enabled
+    
+    return {"ensemble_id": ensemble_id, "enabled": ensemble.enabled}
+
+@app.delete("/ensembles/{ensemble_id}")
+async def delete_ensemble(ensemble_id: str):
+    """Delete an ensemble"""
+    if ensemble_id not in app_state.ensembles:
+        raise HTTPException(status_code=404, detail="Ensemble not found")
+    
+    del app_state.ensembles[ensemble_id]
+    if ensemble_id in app_state.ensemble_results:
+        del app_state.ensemble_results[ensemble_id]
+    
+    logger.info("ensemble_deleted", ensemble_id=ensemble_id)
+    return {"status": "success", "message": "Ensemble deleted"}
+
+@app.get("/ensembles/{ensemble_id}/results")
+async def get_ensemble_results(ensemble_id: str, limit: int = 50):
+    """Get ensemble query results"""
+    if ensemble_id not in app_state.ensembles:
+        raise HTTPException(status_code=404, detail="Ensemble not found")
+    
+    results = app_state.ensemble_results.get(ensemble_id, [])
+    return {"results": results[-limit:]}
+
+@app.post("/ensembles/{ensemble_id}/test")
+async def test_ensemble(ensemble_id: str, question: str):
+    """Test an ensemble with a sample question"""
+    if ensemble_id not in app_state.ensembles:
+        raise HTTPException(status_code=404, detail="Ensemble not found")
+    
+    ensemble = app_state.ensembles[ensemble_id]
+    if not ensemble.enabled:
+        raise HTTPException(status_code=400, detail="Ensemble is disabled")
+    
+    # Simple context for testing
+    context = "This is a test query to evaluate the ensemble."
+    
+    result = await execute_ensemble(ensemble, question, context)
+    
+    return result
 
 # A/B Test Management Endpoints
 @app.post("/ab-tests", response_model=ABTestConfig)
