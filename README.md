@@ -1,6 +1,6 @@
 # Dual RAG LLM System
 
-[![Version](https://img.shields.io/badge/version-1.14.0-blue.svg)](https://github.com/adrian207/dual-rag-llm/releases)
+[![Version](https://img.shields.io/badge/version-1.15.0-blue.svg)](https://github.com/adrian207/dual-rag-llm/releases)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/docker-20.10+-blue.svg)](https://www.docker.com/)
@@ -64,6 +64,18 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 ```
 
 ## Key Features
+
+### 🔐 Data Encryption at Rest & in Transit (v1.15.0)
+- **AES-256 Encryption**: Military-grade encryption via Fernet
+- **Data-at-Rest**: Encrypt sensitive data in databases and storage
+- **Data-in-Transit**: TLS 1.2+ with configurable cipher suites
+- **Field-Level Encryption**: Selective encryption of sensitive fields
+- **Key Management**: Master key generation, derivation, and rotation
+- **Password Hashing**: PBKDF2 with SHA-256 (100K iterations)
+- **TLS/HTTPS Support**: Full SSL/TLS configuration for secure communication
+- **mTLS Support**: Mutual TLS with client certificate verification
+- **Key Rotation**: Periodic key updates without service disruption
+- **7 API Endpoints**: Complete encryption management
 
 ### 🔒 Enterprise Audit Logging (v1.14.0)
 - **24 Event Types**: API requests, queries, system events, security events, data operations
@@ -692,18 +704,18 @@ request_timeout = 120.0       # LLM request timeout (seconds)
 
 ## Version History
 
-**Current Version:** 1.14.0 (October 31, 2024)
+**Current Version:** 1.15.0 (October 31, 2024)
 
 See [CHANGELOG.md](CHANGELOG.md) for complete release notes.
 
 **Recent Releases:**
+- **v1.15.0** - Data Encryption (AES-256, TLS 1.2+, key management)
 - **v1.14.0** - Enterprise Audit Logging (24 event types, compliance ready)
 - **v1.13.0** - Modern React Frontend (React 18 + TypeScript + Vite)
 - **v1.12.0** - Multi-language Support (10 languages)
 - **v1.11.0** - Code Syntax Highlighting (22 languages)
-- **v1.10.0** - Response Formatting (6 styles)
 
-[View all 14 releases →](CHANGELOG.md)
+[View all 15 releases →](CHANGELOG.md)
 
 [View all 12 releases →](CHANGELOG.md)
 
@@ -758,13 +770,14 @@ This project builds upon excellent open-source work:
 
 ## Project Stats
 
-- **14 Major Versions** released
+- **15 Major Versions** released
 - **Modern React Frontend** with TypeScript
+- **Enterprise-Grade Encryption** (AES-256 + TLS 1.2+)
 - **Enterprise Audit Logging** with 24 event types
 - **22 Programming Languages** supported (syntax highlighting)
 - **10 Human Languages** supported (UI + translation)
-- **95+ API Endpoints** documented
-- **5,500+ Lines** of production code
+- **100+ API Endpoints** documented
+- **6,000+ Lines** of production code
 - **3,500+ Lines** of documentation
 - **3+ Billion** potential users (language reach)
 
@@ -777,7 +790,7 @@ If you use this project in your research or production, please cite:
   author = {Johnson, Adrian},
   title = {Dual RAG LLM System: Enterprise RAG with Multi-language Support},
   year = {2024},
-  version = {1.14.0},
+  version = {1.15.0},
   url = {https://github.com/adrian207/dual-rag-llm}
 }
 ```
@@ -785,5 +798,5 @@ If you use this project in your research or production, please cite:
 ---
 
 **Built with ❤️ by Adrian Johnson**  
-**Last Updated:** October 31, 2024 | **Version:** 1.14.0
+**Last Updated:** October 31, 2024 | **Version:** 1.15.0
 
