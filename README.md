@@ -74,6 +74,46 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 - 32GB+ RAM recommended
 - 100GB+ free disk space (for models)
 
+## ☁️ Azure Deployment
+
+**Want to deploy to Microsoft Azure?** We have a complete Azure deployment branch with:
+
+- **Azure VM Deployment** - Simplest option (~$900/month)
+- **Azure Kubernetes Service (AKS)** - Production-ready (~$960/month)
+- **Complete Kubernetes manifests** with GPU support
+- **Automated deployment scripts**
+- **Model update strategies** (rolling, blue-green, automated)
+- **Cost optimization guides** (save 60-70% with scheduling)
+
+### Quick Azure Deploy
+
+```bash
+# Clone the Azure deployment branch
+git checkout azure/deployment
+
+# Option 1: Deploy to Azure VM (simplest)
+cd azure
+# Follow VM_DEPLOYMENT.md
+
+# Option 2: Deploy to AKS (production)
+./azure/scripts/deploy-to-aks.sh
+```
+
+**Documentation:**
+- [Azure Deployment Guide](https://github.com/adrian207/dual-rag-llm/tree/azure/deployment/azure) - Complete guide
+- [Model Update Strategies](https://github.com/adrian207/dual-rag-llm/tree/azure/deployment/azure/AZURE_DEPLOYMENT.md#model-update-strategy) - Rolling, blue-green, automated
+
+**Key Features:**
+- ✅ Native Azure support (VM, AKS, ACI)
+- ✅ Full GPU support (NC-series VMs, T4/V100)
+- ✅ Zero-downtime model updates
+- ✅ Auto-scaling and high availability
+- ✅ Cost optimization (scheduled shutdown, spot instances)
+
+See the [`azure/deployment` branch](https://github.com/adrian207/dual-rag-llm/tree/azure/deployment) for full Azure infrastructure.
+
+---
+
 ## Quick Start
 
 ### 1. Clone and Setup
