@@ -82,8 +82,11 @@ class AppState:
     syntax_highlight_config: SyntaxHighlightConfig = SyntaxHighlightConfig()
     language_config: LanguageConfig = LanguageConfig()
     translations_cache: Dict[str, TranslatedResponse] = {}  # Cache translations
+    audit_logs: List['AuditLog'] = []  # Audit log history
+    audit_config: 'AuditConfig' = None  # Will be initialized after class definition
 
 app_state = AppState()
+app_state.audit_config = AuditConfig()
 
 # Configuration
 OLLAMA_API = os.getenv("OLLAMA_API", "http://ollama:11434")
@@ -688,6 +691,112 @@ class LanguageConfig(BaseModel):
         Language.ITALIAN,
         Language.KOREAN
     ]
+
+# Audit Logging Models
+class AuditEventType(str, Enum):
+    """Types of audit events"""
+    # API Events
+    API_REQUEST = "api_request"
+    API_RESPONSE = "api_response"
+    API_ERROR = "api_error"
+    
+    # Query Events
+    QUERY_SUBMITTED = "query_submitted"
+    QUERY_COMPLETED = "query_completed"
+    QUERY_FAILED = "query_failed"
+    
+    # System Events
+    SYSTEM_STARTUP = "system_startup"
+    SYSTEM_SHUTDOWN = "system_shutdown"
+    CONFIG_CHANGED = "config_changed"
+    
+    # Cache Events
+    CACHE_HIT = "cache_hit"
+    CACHE_MISS = "cache_miss"
+    CACHE_CLEARED = "cache_cleared"
+    
+    # Model Events
+    MODEL_LOADED = "model_loaded"
+    MODEL_SWITCHED = "model_switched"
+    MODEL_ERROR = "model_error"
+    
+    # Security Events
+    AUTH_SUCCESS = "auth_success"
+    AUTH_FAILURE = "auth_failure"
+    ACCESS_DENIED = "access_denied"
+    
+    # Data Events
+    DATA_EXPORT = "data_export"
+    DATA_IMPORT = "data_import"
+    DATA_DELETED = "data_deleted"
+
+class AuditSeverity(str, Enum):
+    """Severity levels for audit events"""
+    DEBUG = "debug"
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    CRITICAL = "critical"
+
+class AuditLog(BaseModel):
+    """Individual audit log entry"""
+    id: str = ""
+    timestamp: datetime
+    event_type: AuditEventType
+    severity: AuditSeverity = AuditSeverity.INFO
+    user_id: Optional[str] = None
+    ip_address: Optional[str] = None
+    endpoint: Optional[str] = None
+    method: Optional[str] = None
+    status_code: Optional[int] = None
+    request_body: Optional[Dict[str, Any]] = None
+    response_data: Optional[Dict[str, Any]] = None
+    error_message: Optional[str] = None
+    duration_ms: Optional[float] = None
+    metadata: Dict[str, Any] = {}
+    
+    def __init__(self, **data):
+        super().__init__(**data)
+        if not self.id:
+            self.id = hashlib.md5(
+                f"{self.timestamp}{self.event_type}{self.endpoint}".encode()
+            ).hexdigest()[:16]
+
+class AuditConfig(BaseModel):
+    """Audit logging configuration"""
+    enabled: bool = True
+    log_api_requests: bool = True
+    log_api_responses: bool = False  # Can be verbose
+    log_request_bodies: bool = False  # Security consideration
+    log_response_data: bool = False   # Security consideration
+    log_cache_events: bool = True
+    log_model_events: bool = True
+    log_security_events: bool = True
+    retention_days: int = 90
+    max_logs: int = 100000
+    export_formats: List[str] = ["json", "csv"]
+
+class AuditLogFilter(BaseModel):
+    """Filter criteria for audit logs"""
+    event_types: Optional[List[AuditEventType]] = None
+    severities: Optional[List[AuditSeverity]] = None
+    user_id: Optional[str] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
+    endpoint: Optional[str] = None
+    min_duration_ms: Optional[float] = None
+    limit: int = 100
+    offset: int = 0
+
+class AuditLogStats(BaseModel):
+    """Statistics about audit logs"""
+    total_logs: int
+    by_event_type: Dict[str, int]
+    by_severity: Dict[str, int]
+    by_endpoint: Dict[str, int]
+    avg_request_duration_ms: float
+    error_rate: float
+    date_range: Dict[str, str]
 
 class SystemStats(BaseModel):
     """System statistics"""
@@ -3810,6 +3919,329 @@ async def get_supported_languages():
             {"code": "ko", "name": "Korean", "native_name": "한국어"}
         ],
         "default": app_state.language_config.default_language
+    }
+
+# Audit Logging Functions
+def log_audit_event(
+    event_type: AuditEventType,
+    severity: AuditSeverity = AuditSeverity.INFO,
+    user_id: Optional[str] = None,
+    ip_address: Optional[str] = None,
+    endpoint: Optional[str] = None,
+    method: Optional[str] = None,
+    status_code: Optional[int] = None,
+    request_body: Optional[Dict] = None,
+    response_data: Optional[Dict] = None,
+    error_message: Optional[str] = None,
+    duration_ms: Optional[float] = None,
+    metadata: Optional[Dict] = None
+) -> AuditLog:
+    """
+    Log an audit event with comprehensive details.
+    """
+    if not app_state.audit_config.enabled:
+        return None
+    
+    # Apply config filters
+    if event_type == AuditEventType.API_REQUEST and not app_state.audit_config.log_api_requests:
+        return None
+    if event_type == AuditEventType.API_RESPONSE and not app_state.audit_config.log_api_responses:
+        return None
+    
+    # Sanitize sensitive data
+    if not app_state.audit_config.log_request_bodies:
+        request_body = None
+    if not app_state.audit_config.log_response_data:
+        response_data = None
+    
+    audit_log = AuditLog(
+        timestamp=datetime.utcnow(),
+        event_type=event_type,
+        severity=severity,
+        user_id=user_id,
+        ip_address=ip_address,
+        endpoint=endpoint,
+        method=method,
+        status_code=status_code,
+        request_body=request_body,
+        response_data=response_data,
+        error_message=error_message,
+        duration_ms=duration_ms,
+        metadata=metadata or {}
+    )
+    
+    app_state.audit_logs.append(audit_log)
+    
+    # Enforce retention policy
+    if len(app_state.audit_logs) > app_state.audit_config.max_logs:
+        # Remove oldest 20% of logs
+        remove_count = int(app_state.audit_config.max_logs * 0.2)
+        app_state.audit_logs = app_state.audit_logs[remove_count:]
+        logger.info("audit_log_rotation", removed=remove_count)
+    
+    # Log to structured logger
+    logger.info(
+        "audit_event",
+        event_type=event_type,
+        severity=severity,
+        endpoint=endpoint,
+        duration_ms=duration_ms
+    )
+    
+    return audit_log
+
+def filter_audit_logs(filter_criteria: AuditLogFilter) -> List[AuditLog]:
+    """
+    Filter audit logs based on criteria.
+    """
+    filtered = app_state.audit_logs
+    
+    # Apply filters
+    if filter_criteria.event_types:
+        filtered = [log for log in filtered if log.event_type in filter_criteria.event_types]
+    
+    if filter_criteria.severities:
+        filtered = [log for log in filtered if log.severity in filter_criteria.severities]
+    
+    if filter_criteria.user_id:
+        filtered = [log for log in filtered if log.user_id == filter_criteria.user_id]
+    
+    if filter_criteria.endpoint:
+        filtered = [log for log in filtered if log.endpoint and filter_criteria.endpoint in log.endpoint]
+    
+    if filter_criteria.start_date:
+        filtered = [log for log in filtered if log.timestamp >= filter_criteria.start_date]
+    
+    if filter_criteria.end_date:
+        filtered = [log for log in filtered if log.timestamp <= filter_criteria.end_date]
+    
+    if filter_criteria.min_duration_ms:
+        filtered = [log for log in filtered if log.duration_ms and log.duration_ms >= filter_criteria.min_duration_ms]
+    
+    # Sort by timestamp descending (newest first)
+    filtered.sort(key=lambda x: x.timestamp, reverse=True)
+    
+    # Apply pagination
+    start = filter_criteria.offset
+    end = start + filter_criteria.limit
+    
+    return filtered[start:end]
+
+def get_audit_stats() -> AuditLogStats:
+    """
+    Get statistics about audit logs.
+    """
+    logs = app_state.audit_logs
+    
+    if not logs:
+        return AuditLogStats(
+            total_logs=0,
+            by_event_type={},
+            by_severity={},
+            by_endpoint={},
+            avg_request_duration_ms=0.0,
+            error_rate=0.0,
+            date_range={}
+        )
+    
+    # Count by event type
+    by_event_type = {}
+    for log in logs:
+        by_event_type[log.event_type] = by_event_type.get(log.event_type, 0) + 1
+    
+    # Count by severity
+    by_severity = {}
+    for log in logs:
+        by_severity[log.severity] = by_severity.get(log.severity, 0) + 1
+    
+    # Count by endpoint
+    by_endpoint = {}
+    for log in logs:
+        if log.endpoint:
+            by_endpoint[log.endpoint] = by_endpoint.get(log.endpoint, 0) + 1
+    
+    # Average duration
+    durations = [log.duration_ms for log in logs if log.duration_ms is not None]
+    avg_duration = sum(durations) / len(durations) if durations else 0.0
+    
+    # Error rate
+    error_logs = [log for log in logs if log.severity in [AuditSeverity.ERROR, AuditSeverity.CRITICAL]]
+    error_rate = len(error_logs) / len(logs) if logs else 0.0
+    
+    # Date range
+    timestamps = [log.timestamp for log in logs]
+    date_range = {
+        "earliest": min(timestamps).isoformat() if timestamps else None,
+        "latest": max(timestamps).isoformat() if timestamps else None
+    }
+    
+    return AuditLogStats(
+        total_logs=len(logs),
+        by_event_type=by_event_type,
+        by_severity=by_severity,
+        by_endpoint=dict(sorted(by_endpoint.items(), key=lambda x: x[1], reverse=True)[:10]),
+        avg_request_duration_ms=round(avg_duration, 2),
+        error_rate=round(error_rate, 4),
+        date_range=date_range
+    )
+
+def export_audit_logs(format: str = "json", filter_criteria: Optional[AuditLogFilter] = None) -> str:
+    """
+    Export audit logs in specified format.
+    """
+    logs = filter_audit_logs(filter_criteria) if filter_criteria else app_state.audit_logs
+    
+    if format == "json":
+        return json.dumps([log.dict() for log in logs], indent=2, default=str)
+    
+    elif format == "csv":
+        import io
+        import csv
+        
+        output = io.StringIO()
+        if logs:
+            fieldnames = ['id', 'timestamp', 'event_type', 'severity', 'user_id', 'ip_address',
+                         'endpoint', 'method', 'status_code', 'duration_ms', 'error_message']
+            writer = csv.DictWriter(output, fieldnames=fieldnames)
+            writer.writeheader()
+            
+            for log in logs:
+                row = {k: getattr(log, k) for k in fieldnames}
+                writer.writerow(row)
+        
+        return output.getvalue()
+    
+    else:
+        raise ValueError(f"Unsupported export format: {format}")
+
+# Audit Logging API Endpoints
+@app.get("/audit/logs", response_model=List[AuditLog])
+async def get_audit_logs(
+    event_types: Optional[str] = None,
+    severities: Optional[str] = None,
+    user_id: Optional[str] = None,
+    endpoint: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    min_duration_ms: Optional[float] = None,
+    limit: int = 100,
+    offset: int = 0
+):
+    """Get filtered audit logs"""
+    
+    filter_criteria = AuditLogFilter(
+        event_types=[AuditEventType(et) for et in event_types.split(',')] if event_types else None,
+        severities=[AuditSeverity(s) for s in severities.split(',')] if severities else None,
+        user_id=user_id,
+        endpoint=endpoint,
+        start_date=datetime.fromisoformat(start_date) if start_date else None,
+        end_date=datetime.fromisoformat(end_date) if end_date else None,
+        min_duration_ms=min_duration_ms,
+        limit=limit,
+        offset=offset
+    )
+    
+    logs = filter_audit_logs(filter_criteria)
+    logger.info("audit_logs_retrieved", count=len(logs))
+    
+    return logs
+
+@app.get("/audit/stats")
+async def get_audit_statistics():
+    """Get audit log statistics"""
+    stats = get_audit_stats()
+    logger.info("audit_stats_retrieved")
+    return stats
+
+@app.get("/audit/export/{format}")
+async def export_audit_logs_endpoint(
+    format: str,
+    event_types: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+):
+    """Export audit logs in specified format (json or csv)"""
+    
+    if format not in app_state.audit_config.export_formats:
+        raise HTTPException(400, f"Format {format} not supported. Use: {app_state.audit_config.export_formats}")
+    
+    filter_criteria = None
+    if event_types or start_date or end_date:
+        filter_criteria = AuditLogFilter(
+            event_types=[AuditEventType(et) for et in event_types.split(',')] if event_types else None,
+            start_date=datetime.fromisoformat(start_date) if start_date else None,
+            end_date=datetime.fromisoformat(end_date) if end_date else None,
+            limit=1000000  # Export all matching
+        )
+    
+    content = export_audit_logs(format, filter_criteria)
+    
+    # Log export event
+    log_audit_event(
+        AuditEventType.DATA_EXPORT,
+        severity=AuditSeverity.INFO,
+        endpoint="/audit/export",
+        metadata={"format": format, "log_count": len(content.split('\n'))}
+    )
+    
+    media_type = "application/json" if format == "json" else "text/csv"
+    filename = f"audit_logs_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.{format}"
+    
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@app.get("/audit/config")
+async def get_audit_config():
+    """Get audit logging configuration"""
+    return app_state.audit_config
+
+@app.put("/audit/config")
+async def update_audit_config(config: AuditConfig):
+    """Update audit logging configuration"""
+    app_state.audit_config = config
+    
+    log_audit_event(
+        AuditEventType.CONFIG_CHANGED,
+        severity=AuditSeverity.INFO,
+        endpoint="/audit/config",
+        metadata={"enabled": config.enabled, "retention_days": config.retention_days}
+    )
+    
+    logger.info("audit_config_updated", enabled=config.enabled)
+    return config
+
+@app.delete("/audit/logs")
+async def clear_audit_logs(older_than_days: Optional[int] = None):
+    """Clear audit logs (optionally older than specified days)"""
+    
+    initial_count = len(app_state.audit_logs)
+    
+    if older_than_days:
+        cutoff_date = datetime.utcnow() - timedelta(days=older_than_days)
+        app_state.audit_logs = [
+            log for log in app_state.audit_logs 
+            if log.timestamp > cutoff_date
+        ]
+    else:
+        app_state.audit_logs = []
+    
+    removed_count = initial_count - len(app_state.audit_logs)
+    
+    log_audit_event(
+        AuditEventType.DATA_DELETED,
+        severity=AuditSeverity.WARNING,
+        endpoint="/audit/logs",
+        metadata={"removed_count": removed_count, "older_than_days": older_than_days}
+    )
+    
+    logger.info("audit_logs_cleared", removed=removed_count)
+    
+    return {
+        "message": f"Cleared {removed_count} audit logs",
+        "remaining": len(app_state.audit_logs)
     }
 
 # Model Ensemble Management Endpoints
