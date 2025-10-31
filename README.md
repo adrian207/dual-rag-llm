@@ -59,6 +59,14 @@ MS Path (.cs, .ps1, .yaml, .yml, .xaml)          OSS Path (other)
 - **Combined tool usage** - RAG + Web + GitHub in single query
 - **Tool statistics** - Track usage and performance
 
+### 🎨 Interactive UI (v1.2.0) ⭐ NEW
+- **Real-time streaming** - Token-by-token response generation
+- **Modern web interface** - Dark theme, responsive design
+- **Live statistics** - Cache hit rate, query counts
+- **Tool toggles** - One-click web search and GitHub integration
+- **Chat-style layout** - Familiar conversation interface
+- **Markdown formatting** - Code blocks, syntax highlighting
+
 ### 🛡️ Robustness
 - **Comprehensive error handling** - Graceful degradation
 - **Health checks** - Container orchestration readiness
@@ -193,6 +201,7 @@ docker compose logs -f rag
 
 ### 7. Access Interfaces
 
+- **Interactive UI** ⭐: http://localhost:8000/ui (NEW!)
 - **Open-WebUI**: http://localhost:3000
 - **RAG API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
